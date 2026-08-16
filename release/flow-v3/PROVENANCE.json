@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema": "madp.publication-provenance.v1",
+  "source_release": {
+    "schema": "ascendop.endpoint-release.v3",
+    "created_at": "2026-08-08T00:29:17.679375+00:00",
+    "release_generation": "146832cda84837d1a61e210dd0a85af54ad66142f5a08d159e1b320701c44c4f",
+    "wire_version": 3,
+    "control_database_schema": 9,
+    "protocol_generation": "4e7cc5d3a067364b2bd41611aa80ba5baee8f80963d73e5a9088995e09c9061a",
+    "daemon_generation": "7f79dc97ca112728d2454fb170aaa0a7a6b41fc0e78ff2fca4668c7462ee3f10",
+    "engine_code_generation": "1925902d79c420be",
+    "transport_generation": "a74954d77b034e56552a5b5f10cd8ff9722c023319166077f089c25feb915a23"
+  },
+  "included_archives": {
+    "ascendop-protocol.tar.gz": "21dbe526fef9175aa67e8c1c69e1b82b8eebba478fa11b30a64acfab2a1330f5",
+    "ascendop-daemon.tar.gz": "aeb95b12dc050cb05b3c7c0458d66787ceb99522c23ea23463ca05c95ecf7d5f",
+    "engine-runtime.tar.gz": "3a97804c05b378c9dc6ef381cf43cb02ccec63920dc3725a5ba497a4e6028533",
+    "gitpartner-runtime.tar.gz": "2a0ea3c60cc8f9da9ef93f5865a41477028f9b4874842c9c01f8b9eddf7bb401"
+  },
+  "excluded_artifact_classes": [
+    "credentials",
+    "daemon configuration",
+    "endpoint and node registries",
+    "operator source and test data",
+    "runtime state and receipts",
+    "official evaluation implementation"
+  ],
+  "sanitization": {
+    "machine_identities": "replaced with generic examples",
+    "machine_paths": "replaced with /opt/ascendop",
+    "source_behavior": "otherwise preserved at the release boundary"
+  }
+}

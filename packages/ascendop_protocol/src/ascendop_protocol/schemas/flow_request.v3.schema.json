@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.flow.request.v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["meta", "identity", "workflow", "payload", "execution", "retry_policy", "result_contract"],
+  "properties": {
+    "meta": {"type": "object", "required": ["schema", "version", "request_id", "attempt_id", "trace_id", "producer", "code_generation", "created_at"]},
+    "identity": {"type": "object", "required": ["endpoint_id", "endpoint_generation", "registration_generation", "idempotency_key"]},
+    "workflow": {"type": "object", "required": ["domain", "season", "operator", "test_version", "case_version", "gate", "operation_kind"]},
+    "payload": {"type": "object", "required": ["digest", "parts"]},
+    "execution": {
+      "type": "object",
+      "required": ["profile", "budget_class", "budget_policy_version", "performance_mode", "requested_device_session_seconds", "granted_device_session_seconds", "correctness_required", "publish_eligible"],
+      "properties": {
+        "budget_gate_evidence": {"type": "object"},
+        "budget_gate_evidence_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "retry_policy": {"type": "object"},
+    "result_contract": {"type": "object"},
+    "extensions": {"type": "object"}
+  }
+}

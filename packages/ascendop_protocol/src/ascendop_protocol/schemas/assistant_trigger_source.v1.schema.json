@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.assistant-trigger-source.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "source_id", "enabled", "operator", "workspace", "rules_path", "metrics_path", "context_path"],
+  "properties": {
+    "schema": {"const": "ascendop.assistant-trigger-source.v1"},
+    "source_id": {"type": "string", "minLength": 1},
+    "enabled": {"type": "boolean"},
+    "operator": {"type": "string", "minLength": 1},
+    "workspace": {"type": "string", "minLength": 1},
+    "rules_path": {"type": "string", "minLength": 1},
+    "metrics_path": {"type": "string", "minLength": 1},
+    "context_path": {"type": "string", "minLength": 1},
+    "extensions": {"type": "object"}
+  }
+}

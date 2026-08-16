@@ -1,0 +1,1 @@
+"""Offline-only legacy compatibility."""

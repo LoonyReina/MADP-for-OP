@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.metric-trigger-rule.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "rule_id", "when", "action", "assistant_target_id", "runbook_path"],
+  "properties": {
+    "schema": {"const": "ascendop.metric-trigger-rule.v1"},
+    "rule_id": {"type": "string", "minLength": 1},
+    "when": {"type": "object", "minProperties": 1},
+    "action": {"type": "string", "minLength": 1},
+    "assistant_target_id": {"type": "string", "minLength": 1},
+    "runbook_path": {"type": "string", "minLength": 1}
+  }
+}

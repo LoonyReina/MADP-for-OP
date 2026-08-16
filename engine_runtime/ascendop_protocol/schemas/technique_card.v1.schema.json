@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.technique-card.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "technique_id", "title", "state", "mechanism", "source_ids", "applicability", "source_locations", "expected_signal", "risks", "falsifier", "evidence_paths", "tags"],
+  "properties": {
+    "schema": {"const": "ascendop.technique-card.v1"},
+    "technique_id": {"type": "string", "minLength": 1},
+    "title": {"type": "string", "minLength": 1},
+    "state": {"enum": ["extracted", "hypothesis", "operator_validated", "cross_operator_validated", "promoted", "rejected"]},
+    "mechanism": {"type": "string", "minLength": 1},
+    "source_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "applicability": {"type": "object", "required": ["soc", "cann", "operator_families", "shape_regimes", "pipelines", "dtypes"], "properties": {"soc": {"type": "array", "items": {"type": "string"}}, "cann": {"type": "array", "items": {"type": "string"}}, "operator_families": {"type": "array", "items": {"type": "string"}}, "shape_regimes": {"type": "array", "items": {"type": "string"}}, "pipelines": {"type": "array", "items": {"type": "string"}}, "dtypes": {"type": "array", "items": {"type": "string"}}}, "additionalProperties": false},
+    "source_locations": {"type": "array", "items": {"type": "string"}},
+    "expected_signal": {"type": "string", "minLength": 1},
+    "risks": {"type": "array", "items": {"type": "string"}},
+    "falsifier": {"type": "string", "minLength": 1},
+    "evidence_paths": {"type": "array", "items": {"type": "string"}},
+    "tags": {"type": "array", "items": {"type": "string"}}
+  }
+}

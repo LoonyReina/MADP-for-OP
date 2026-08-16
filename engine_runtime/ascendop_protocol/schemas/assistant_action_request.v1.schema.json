@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.assistant-action-request.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "action_id", "rule_id", "assistant_target_id", "action", "operator", "candidate_digest", "workspace", "runbook_path", "evidence", "created_at"],
+  "properties": {
+    "schema": {"const": "ascendop.assistant-action-request.v1"},
+    "action_id": {"type": "string", "minLength": 1},
+    "rule_id": {"type": "string", "minLength": 1},
+    "assistant_target_id": {"type": "string", "minLength": 1},
+    "action": {"type": "string", "minLength": 1},
+    "operator": {"type": "string", "minLength": 1},
+    "candidate_digest": {"type": "string", "minLength": 1},
+    "workspace": {"type": "string", "minLength": 1},
+    "runbook_path": {"type": "string", "minLength": 1},
+    "evidence": {
+      "type": "array",
+      "items": {"anyOf": [{"type": "string"}, {"type": "object"}]}
+    },
+    "parameters": {"type": "object"},
+    "created_at": {"type": "string", "minLength": 1}
+  }
+}

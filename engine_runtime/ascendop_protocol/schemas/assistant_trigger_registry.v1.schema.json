@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.assistant-trigger-registry.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "sources"],
+  "properties": {
+    "schema": {"const": "ascendop.assistant-trigger-registry.v1"},
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_id", "manifest_path", "enabled"],
+        "properties": {
+          "source_id": {"type": "string", "minLength": 1},
+          "manifest_path": {"type": "string", "minLength": 1},
+          "enabled": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}

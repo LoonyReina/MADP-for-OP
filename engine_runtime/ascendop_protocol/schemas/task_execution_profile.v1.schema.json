@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.task-execution-profile.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "task_id", "backend_pool", "environment", "capabilities", "routing", "budget", "origin_workspace"],
+  "properties": {
+    "schema": {"const": "ascendop.task-execution-profile.v1"},
+    "task_id": {"type": "string", "minLength": 1},
+    "backend_pool": {"type": "string", "minLength": 1},
+    "environment": {
+      "type": "object",
+      "required": ["soc", "cann", "operating_systems"],
+      "properties": {
+        "soc": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "cann": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "operating_systems": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "capabilities": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "routing": {"type": "object", "required": ["mode"], "properties": {"mode": {"enum": ["dynamic", "pinned"]}, "endpoint_id": {"type": "string"}}},
+    "budget": {"type": "object", "required": ["class"], "properties": {"class": {"enum": ["standard", "heavy", "diagnostic", "maintenance"]}, "requested_device_session_seconds": {"type": ["integer", "null"], "minimum": 1}, "policy": {"type": "string"}}},
+    "origin_workspace": {"type": "string", "minLength": 1},
+    "extensions": {"type": "object"}
+  }
+}

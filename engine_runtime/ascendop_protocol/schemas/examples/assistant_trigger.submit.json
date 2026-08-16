@@ -1,0 +1,8 @@
+{
+  "schema": "ascendop.metric-trigger-rule.v1",
+  "rule_id": "submit-after-deterministic-pass",
+  "when": {"terminal_tests_since_last_official": {">=": 5}, "deterministic_passes_same_digest": {">=": 2}, "correctness_all_pass": true, "source_digest_changed": true},
+  "action": "prepare_official_submission",
+  "assistant_target_id": "cannjudge-assistant",
+  "runbook_path": "operators/cann-ladder/Example/SUBMISSION_RUNBOOK.md"
+}

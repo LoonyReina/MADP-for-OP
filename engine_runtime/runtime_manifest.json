@@ -1,0 +1,261 @@
+{
+  "files": [
+    {
+      "package": "limited_remote_partner",
+      "path": "core/atomic_file.py",
+      "sha256": "cf15e0c80dcfd4609809156c9f7c0f4ae669cbb1eefb6f8979310db7ec27a8a9"
+    },
+    {
+      "package": "limited_remote_partner",
+      "path": "engine/batch_case_runner.py",
+      "sha256": "94d09267ec1dc4dd1e8b8ce890e46797b07b685654f7f60615a4bbfebb662151"
+    },
+    {
+      "package": "limited_remote_partner",
+      "path": "resources/case_cache.py",
+      "sha256": "611fd676f69c05831578d41f05622564ac9644e1728261300876bc31668dfbe1"
+    },
+    {
+      "package": "limited_remote_partner",
+      "path": "engine/stages/correctness_pipeline.py",
+      "sha256": "3cba236e48fb85c09af98b659cf8fe6fed897c28371fbb12d681fff85116f0b0"
+    },
+    {
+      "package": "limited_remote_partner",
+      "path": "engine/engine_identity.py",
+      "sha256": "27ed91005ec2828b95ac5359b19a99dd5fc726dad8425c2f954352a3a01aec32"
+    },
+    {
+      "package": "limited_remote_partner",
+      "path": "endpoint/flow_v3_endpoint.py",
+      "sha256": "7121048e78fafea1202465b6944137749fd246e6fa07f85cb50cc659f52aa46f"
+    },
+    {
+      "package": "limited_remote_partner",
+      "path": "resources/operator_cache.py",
+      "sha256": "137790d0e1ed44a4710804e6222fae0395e1affe179eb64e9bb5efbd2454c5e9"
+    },
+    {
+      "package": "limited_remote_partner",
+      "path": "resources/payload_archive.py",
+      "sha256": "3820f99e6d147521bdc9e3dcd5829a429f15b95208ef6f53b046a38e1155a381"
+    },
+    {
+      "package": "limited_remote_partner",
+      "path": "observability/runtime_readiness.py",
+      "sha256": "79c8a9992af330a49c0f5cae62e5d0cbd5a62a7e0bcf74d3f4c631037688519b"
+    },
+    {
+      "package": "limited_remote_partner",
+      "path": "engine/stages/perf_pipeline.py",
+      "sha256": "902e083619573a9a0ea8b3066973b5a32d68c9ba91e87aec44107e3a99a5e650"
+    },
+    {
+      "package": "limited_remote_partner",
+      "path": "engine/stages/profile_session_runner.py",
+      "sha256": "b9efa8728cf9978dd3388e1843511d3050f0a3640353771760578551fa270129"
+    },
+    {
+      "package": "limited_remote_partner",
+      "path": "resources/shared_resource_lease.py",
+      "sha256": "4a09731461efdf542bd5163d636271c89d5228b88ab0ca2d60bb4a19b2166427"
+    },
+    {
+      "package": "limited_remote_partner",
+      "path": "core/process_utils.py",
+      "sha256": "e771ae5a4e16879cd1072d26c673a40b3b04b84c7ad429fccba611cdb055144c"
+    },
+    {
+      "package": "limited_remote_partner",
+      "path": "engine/test_engine.py",
+      "sha256": "00914e7aee68eb765daaabe63a75f5ff4dc6f33948b56097d688c0f8b2f01a2e"
+    },
+    {
+      "package": "limited_remote_partner",
+      "path": "cli/test_engine_cli.py",
+      "sha256": "d5b9a40a811028c0bf0504087c1dbc5d93d99b59ff4a74dee530d2c3df81328a"
+    },
+    {
+      "package": "limited_remote_partner",
+      "path": "engine/test_engine_worker.py",
+      "sha256": "c9964e67b8177b32e1ca427359ed77f875ae86d82b98d0ec8854031051b0bba2"
+    },
+    {
+      "package": "limited_remote_partner",
+      "path": "resources/wheel_cache.py",
+      "sha256": "ad7c29b76250123728c8f8d4059db892262e5dfa5d2f8235a67000ee4af97fa8"
+    },
+    {
+      "package": "limited_remote_partner",
+      "path": "engine/runtime_manifest.py",
+      "sha256": "cdc6d35091062af2902c0c0704745dc15bfa8a245caec59477c4a7ea909c3769"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "__init__.py",
+      "sha256": "616bdbba5e912fcd1b06d5cc51f2ad28a935481acdb9c2a9a7f605902393af17"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "automation/__init__.py",
+      "sha256": "d92aceb3b6ed2145409c8401c1869b14c3e48872fe7026ba332d711f71161abf"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "automation/contracts.py",
+      "sha256": "c5d15555594b89348fb0f5725c31a5228e049b0b04a85cb49cd972da1ecfa9d2"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "competition/__init__.py",
+      "sha256": "8a1654f0049768de25c19ff3da5decd02d503bfcacd391168ebac2761429ee9d"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "competition/contracts.py",
+      "sha256": "44327862525776b61b4bba043e0c816cbe411b3ada2e4af4b3ed1529562692d7"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "competition/project_evidence.py",
+      "sha256": "35fc5317e60c36bd15b2b13abc36becae2b3feff8ff6a2f29946e3d7f24ca5e4"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "reference_knowledge/__init__.py",
+      "sha256": "f6200e2433a6f3d5fec7672a9c49d2f7bac8487e51f2af7afed6f4f202722b20"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "reference_knowledge/contracts.py",
+      "sha256": "632d74c6de7460fe4747375ddcec3ff309ed9d6ff52da3fd9fa95e4e529f3145"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "schemas/__init__.py",
+      "sha256": "05606b4198a04ef925feec7ca2f2233eca1d139d63c97e03dff4c0742c02f1e9"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "schemas/assistant_action_receipt.v1.schema.json",
+      "sha256": "8455ad6d2ee3f40a100953bca7e572860638da10730824a7ddf9c97b44896fac"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "schemas/assistant_action_request.v1.schema.json",
+      "sha256": "8ba66368a96dc98c1378431b8bc839f9e83cf24b4a23ea02c793086ee3c33334"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "schemas/assistant_trigger_registry.v1.schema.json",
+      "sha256": "793d440159ccc10e5c6a53202e0a6eac0787fce575e166b5a3ad4776ffd89470"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "schemas/assistant_trigger_source.v1.schema.json",
+      "sha256": "0de7671950327e0ba2bbce45cebf16a8472bad8d7cd16ae1b59eb9eb68270b98"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "schemas/examples/assistant_trigger.submit.json",
+      "sha256": "d35432198e78b4a445bff5210026dbb5750ad4b62e23401ccd46cbf1b272aad0"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "schemas/examples/task_execution_profile.dynamic.json",
+      "sha256": "efc8c8ea1fd92c6f1a33f84e6569b1ecb42e28099b191be6ba8204456643b772"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "schemas/flow_request.v3.schema.json",
+      "sha256": "7924eea4a56d03a9b3443adb22604dd68072522dc67d6cdc03a178a62c4a54c7"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "schemas/metric_trigger_rule.v1.schema.json",
+      "sha256": "43b37a04d57d08dc0f0564c2903be17fbdc277c45f7470381ef3b43de6ef0204"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "schemas/official_problem_snapshot.v1.schema.json",
+      "sha256": "411b7def1b80dfdbe63d0618b76f638514f510d5873af3b532564f2ac4e5a277"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "schemas/official_submission_receipt.v1.schema.json",
+      "sha256": "b28ab74a6d3893556039124b82a4f9b20bef802a64cd6254e0caf8f33f9c8b25"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "schemas/protocol_variable_registry.v3.schema.json",
+      "sha256": "aa9e7bd61612018bc44e4430f0d29ba1a3efd7622fe4704c6f564c33a58ea866"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "schemas/reference_source_manifest.v1.schema.json",
+      "sha256": "cc786812bcfb18aaf06f9da22c6fa21f78375e5b426cf4f61c84555b9d77ba75"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "schemas/retrieval_decision.v1.schema.json",
+      "sha256": "daf172840a6f2795aa25cef4327d431d054a3e937b110ac652ee3f27167585b2"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "schemas/schema_registry.json",
+      "sha256": "43af0b0031a0c6d198f72220fc6e3aeda136d0c184e2d32f457ef39cc543b0bc"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "schemas/standing_submission_policy.v1.schema.json",
+      "sha256": "2f58cbbc1668fbc42009611cc1ec10ba72e60ce2e87421b89919c7c06ec5727f"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "schemas/task_execution_profile.v1.schema.json",
+      "sha256": "d8d35b740a5b83e47aa5ef51e1accd868b94ce3cfc2d861f3f5289be36962987"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "schemas/technique_card.v1.schema.json",
+      "sha256": "db889b2bdd61a34a97caa9568812741f6f93aed7e0186cf9baeac3e4c5a8ad94"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "schemas/variables.py",
+      "sha256": "a2fddd5bb00ce4e45814af3e8c6ea5c8b291d666113ee41f200c00efd3466380"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "task_profile/__init__.py",
+      "sha256": "31530c57adfb99558ffa67f6e2284164bf557ac1829903c39da7129de991d6b4"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "task_profile/profile.py",
+      "sha256": "d836ce2c421a569e93cdd5d88b3fdd1bf831db7bbf4cdb01358245a960168ab2"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "telemetry/__init__.py",
+      "sha256": "6caa11a60831ab90374331be8066b4ee726a12223d75c6040b9b1823cf29ab41"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "telemetry/spans.py",
+      "sha256": "d19969d92e0f49d3896ed952af021d6468b7f5b8ff3b8b6f888d59237b6a2a5c"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "wire_v3/__init__.py",
+      "sha256": "96c7b82e952ac6eb652dd950f4a030b2e6669db6291768ec2d6e5967932a41d6"
+    },
+    {
+      "package": "ascendop_protocol",
+      "path": "wire_v3/protocol.py",
+      "sha256": "ada7fcf3c3de9a4def396d85e6376a01bb316b7230d8c685ef0a756ce6548aa1"
+    }
+  ],
+  "generation": "1925902d79c420be",
+  "schema": "ascendop.engine-runtime-manifest.v3"
+}

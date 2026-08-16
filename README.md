@@ -1,51 +1,100 @@
-# AscendOP MADP
+# MADP for OP
 
-AscendOP MADP is a protocol-first multi-agent framework for reproducible hardware
-operator development across heterogeneous test endpoints.
+MADP for OP is a protocol-first, multi-agent development framework for hardware
+operators. It separates agent reasoning from durable workflow state and from the
+machines that build, test, and profile operator candidates.
 
-This first public commit is a **sanitized historical reconstruction** of the
-Scheduler V2 source snapshot preserved on 2026-06-02. It is published to make the
-project's architectural evolution inspectable; it is not the current production
-workflow.
+> Current public milestone: a sanitized reconstruction of the AscendOP Flow V3
+> data-plane release created on 2026-08-07 PDT. Publication commits are created
+> when released and are not backdated; source dates and hashes are preserved in
+> tags and provenance records.
 
-## What Scheduler V2 established
+## Core model
 
-- An append-only task contract shared by producers and a serial scheduler.
-- Explicit `pending`, `claimed`, `running`, and terminal task states.
-- One hardware lock protecting scarce build and accelerator capacity.
-- Structured completion receipts and follow-up notifications.
-- A narrow executor boundary that can be implemented by different endpoints.
-
-## Why the architecture evolved
-
-The V2 queue was human-readable and useful for early experiments, but file polling,
-manual recovery, and endpoint-specific shell code made durable multi-agent
-coordination difficult. Later releases moved state ownership into typed protocol,
-daemon, adapter, and engine layers.
-
-## Local demo
-
-The demo uses no accelerator and no remote endpoint:
-
-```bash
-chmod +x examples/mock_executor.sh
-bash scripts/v2/components/submit_task.sh \
-  --op DemoOp --type correctness --version 1 --deploy-verified
-ASCENDOP_OPERATORS=DemoOp \
-ASCENDOP_TASK_EXECUTOR="$PWD/examples/mock_executor.sh" \
-  bash scripts/v2/scheduler/scheduler.sh tick
-bash scripts/v2/scheduler/scheduler.sh status
+```text
+Solver / Tester agents
+        |
+        v
+typed protocol contracts and evidence
+        |
+        v
+daemon-owned control plane
+        |
+        v
+Wire V3 request and GitPartner transport
+        |
+        v
+profile-selected endpoint Engine
+        |
+        v
+structured correctness and performance results
 ```
 
-See [the task contract](docs/contracts/task_md.md) for the executor receipt format.
+Agents remain responsible for hypotheses, source changes, and case design. The
+framework constrains only side effects that must be reproducible: action identity,
+leases, dispatch, endpoint selection, execution, evidence, retry, and release
+state.
 
-## Sanitization boundary
+## What Flow V3 introduced
+
+- Versioned, immutable Python and JSON contracts in `ascendop_protocol`.
+- A daemon-owned scheduler and SQLite control plane instead of a shared task file.
+- Endpoint-neutral requests carried over a versioned Wire V3 boundary.
+- A remote Engine with correctness, performance, and profiling stages.
+- Content-addressed release bundles for protocol, daemon, transport, and Engine.
+- GitPartner as an isolated transport implementation for heterogeneous endpoints.
+
+Flow V3 established the deployable data plane. It did not yet provide the complete
+serialized AgentAction adapter and resident multi-agent control loop later designed
+for Flow V4.
+
+## Repository layout
+
+- `packages/ascendop_protocol`: shared Flow V3 schemas and Python contracts.
+- `tools/tester_daemon`: scheduler, control plane, exchange, workflow, and telemetry.
+- `engine_runtime`: the minimal endpoint Engine bundled with the release.
+- `GitPartner`: bounded Git-based transport and endpoint service implementation.
+- `docs/architecture`: milestone architecture and known limitations.
+- `release/flow-v3`: machine-readable source provenance.
+
+## Local verification
+
+The source requires Python 3.10 or newer. Compilation does not require accelerator
+hardware:
+
+```bash
+python -m compileall -q packages/ascendop_protocol/src
+python -m compileall -q tools/tester_daemon/src
+python -m compileall -q GitPartner/src
+python -m compileall -q engine_runtime
+```
+
+Editable installation of the control-plane packages is optional:
+
+```bash
+python -m pip install -e packages/ascendop_protocol
+python -m pip install -e tools/tester_daemon
+python -m pip install -e GitPartner
+```
+
+Endpoint execution additionally requires a deployment-specific topology, secrets,
+toolchain, and hardware profile. Those are deliberately absent from this repository.
+
+## Public history
+
+- `archive-2026-06-02`: Scheduler V2 append-only task ledger.
+- `archive-2026-08-07-flow-v3`: typed protocol and deployable endpoint data plane.
+
+See [HISTORY.md](HISTORY.md) and the
+[Flow V3 milestone note](docs/architecture/FLOW_V3_RELEASE.md) for the architectural
+transition.
+
+## Security and license
 
 The public history excludes credentials, endpoint identities, private paths,
-operator implementations, benchmark artifacts, production queue state, and test
-data. Public adapter hooks replace the private prototype's direct remote commands.
-
-## License and trademarks
+operator implementations, benchmark artifacts, production queues, and official
+evaluation implementations. See [SECURITY.md](SECURITY.md) before preparing a
+deployment.
 
 Licensed under the Apache License 2.0. Ascend and other product names belong to
 their respective owners. This independent project is not affiliated with or

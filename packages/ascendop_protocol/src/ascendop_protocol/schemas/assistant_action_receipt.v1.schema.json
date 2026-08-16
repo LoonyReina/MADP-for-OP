@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.assistant-action-receipt.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "action_id", "status", "completed_at"],
+  "properties": {
+    "schema": {"const": "ascendop.assistant-action-receipt.v1"},
+    "action_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["completed", "failed", "rejected", "cancelled"]},
+    "completed_at": {"type": "string", "minLength": 1},
+    "details": {"type": "object"}
+  }
+}

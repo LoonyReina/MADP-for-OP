@@ -3,14 +3,31 @@
 *.pem
 *.key
 id_rsa*
+api.txt
+*.sqlite3
+*.sqlite3-*
+*.tar.gz
 
-logs/
-runtime/
-artifacts/
-operators_workspace/
-operators_testresult/
+/logs/
+/runtime/
+/artifacts/
+/operators_workspace/
+/operators_testresult/
+/.partner_state/
+/.ascendop-work/
+
+GitPartner/configs/endpoints/
+GitPartner/configs/nodes/
+GitPartner/configs/runtime/
+GitPartner/configs/server.json
+GitPartner/configs/partner.json
+tools/tester_daemon/config/*.json
 
 __pycache__/
 *.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
 .pytest_cache/
 .ruff_cache/

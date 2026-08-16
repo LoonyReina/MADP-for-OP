@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.official-submission-receipt.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "receipt_id", "checkpoint_id", "checkpoint_digest", "campaign_id", "operator_id", "project_digest", "submission_id", "submission_url", "submitted_at", "state", "source_file_digests"],
+  "properties": {
+    "schema": {"const": "ascendop.official-submission-receipt.v1"},
+    "receipt_id": {"type": "string", "minLength": 1},
+    "checkpoint_id": {"type": "string", "minLength": 1},
+    "checkpoint_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "campaign_id": {"type": "string", "minLength": 1},
+    "operator_id": {"type": "string", "minLength": 1},
+    "project_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "submission_id": {"type": "string", "minLength": 1},
+    "submission_url": {"type": "string", "minLength": 1},
+    "submitted_at": {"type": "string", "format": "date-time"},
+    "state": {"enum": ["submitted", "pending", "terminal", "uncertain"]},
+    "source_file_digests": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+  }
+}
