@@ -1,0 +1,99 @@
+{
+  "schema": "madp.public-core-manifest.v1",
+  "components": [
+    {
+      "name": "protocol-source",
+      "source": "packages/ascendop_protocol/src",
+      "destination": "packages/ascendop_protocol/src"
+    },
+    {
+      "name": "protocol-tests",
+      "source": "packages/ascendop_protocol/tests",
+      "destination": "packages/ascendop_protocol/tests"
+    },
+    {
+      "name": "control-source",
+      "source": "packages/ascendop_control/src",
+      "destination": "packages/ascendop_control/src"
+    },
+    {
+      "name": "control-tests",
+      "source": "packages/ascendop_control/tests",
+      "destination": "packages/ascendop_control/tests"
+    },
+    {
+      "name": "agent-runner-source",
+      "source": "packages/ascendop_agent_runner/src",
+      "destination": "packages/ascendop_agent_runner/src"
+    },
+    {
+      "name": "agent-runner-tests",
+      "source": "packages/ascendop_agent_runner/tests",
+      "destination": "packages/ascendop_agent_runner/tests"
+    },
+    {
+      "name": "daemon-automation",
+      "source": "tools/tester_daemon/src/ascendop_daemon/automation",
+      "destination": "packages/ascendop_daemon/src/ascendop_daemon/automation",
+      "excluded_paths": ["session_recovery.py"]
+    },
+    {
+      "name": "daemon-control-plane",
+      "source": "tools/tester_daemon/src/ascendop_daemon/control_plane",
+      "destination": "packages/ascendop_daemon/src/ascendop_daemon/control_plane"
+    },
+    {
+      "name": "daemon-core",
+      "source": "tools/tester_daemon/src/ascendop_daemon/core",
+      "destination": "packages/ascendop_daemon/src/ascendop_daemon/core"
+    },
+    {
+      "name": "daemon-exchange",
+      "source": "tools/tester_daemon/src/ascendop_daemon/exchange",
+      "destination": "packages/ascendop_daemon/src/ascendop_daemon/exchange"
+    },
+    {
+      "name": "daemon-observability",
+      "source": "tools/tester_daemon/src/ascendop_daemon/observability",
+      "destination": "packages/ascendop_daemon/src/ascendop_daemon/observability",
+      "excluded_paths": ["status_writer.py"]
+    },
+    {
+      "name": "daemon-registry",
+      "source": "tools/tester_daemon/src/ascendop_daemon/registry",
+      "destination": "packages/ascendop_daemon/src/ascendop_daemon/registry"
+    },
+    {
+      "name": "daemon-runtime",
+      "source": "tools/tester_daemon/src/ascendop_daemon/runtime",
+      "destination": "packages/ascendop_daemon/src/ascendop_daemon/runtime",
+      "excluded_paths": ["flow_v3_runtime.py"]
+    },
+    {
+      "name": "daemon-storage",
+      "source": "tools/tester_daemon/src/ascendop_daemon/storage",
+      "destination": "packages/ascendop_daemon/src/ascendop_daemon/storage",
+      "excluded_paths": ["flow_v3_migration.py"]
+    },
+    {
+      "name": "daemon-workflow",
+      "source": "tools/tester_daemon/src/ascendop_daemon/workflow",
+      "destination": "packages/ascendop_daemon/src/ascendop_daemon/workflow"
+    }
+  ],
+  "excluded_names": [
+    "__pycache__",
+    ".pytest_cache",
+    ".ruff_cache",
+    "ascendop_agent_runner.egg-info",
+    "ascendop_control.egg-info",
+    "ascendop_protocol.egg-info",
+    "ascendop_tester_daemon.egg-info",
+    "build",
+    "dist"
+  ],
+  "excluded_suffixes": [
+    ".pyc",
+    ".pyo"
+  ]
+}

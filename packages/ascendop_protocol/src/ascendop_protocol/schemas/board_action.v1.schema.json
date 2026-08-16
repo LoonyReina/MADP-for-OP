@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.board-action.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "operation", "positional", "options"],
+  "properties": {
+    "schema": {"const": "ascendop.board-action.v1"},
+    "operation": {"type": "string", "minLength": 1},
+    "positional": {"type": "array", "items": {"type": "string"}},
+    "options": {
+      "type": "object",
+      "additionalProperties": {"type": ["string", "number", "boolean", "null"]}
+    }
+  }
+}

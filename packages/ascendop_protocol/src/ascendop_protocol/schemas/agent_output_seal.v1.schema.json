@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.agent-output-seal.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "action_id", "iteration_id", "contracts_digest", "outputs", "created_at"],
+  "properties": {
+    "schema": {"const": "ascendop.agent-output-seal.v1"},
+    "action_id": {"type": "string", "minLength": 1},
+    "iteration_id": {"type": "string", "minLength": 1},
+    "contracts_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "outputs": {"type": "array", "items": {"$ref": "#/$defs/output"}},
+    "created_at": {"type": "string", "minLength": 1}
+  },
+  "$defs": {
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["output_id", "output_kind", "isolated_path", "canonical_path", "sha256", "size_bytes"],
+      "properties": {
+        "output_id": {"type": "string", "minLength": 1},
+        "output_kind": {"enum": ["solver-blocker", "solver-diagnostic-request"]},
+        "isolated_path": {"type": "string", "pattern": "^\\.ascendop-output/[A-Za-z0-9._/-]+$"},
+        "canonical_path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "size_bytes": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}

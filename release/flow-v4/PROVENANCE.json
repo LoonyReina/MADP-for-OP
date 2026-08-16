@@ -1,0 +1,61 @@
+{
+  "schema": "madp.publication-provenance.v1",
+  "milestone": "flow-v4-public-core",
+  "publication_date": "2026-08-16",
+  "public_tag": "archive-2026-08-16-flow-v4-core",
+  "public_core_version": "4.5.0",
+  "source_review_baseline": {
+    "commit": "086d0f10e593ad3d2111118a3e0ed66f4e673458",
+    "committed_at": "2026-08-13T21:47:50-07:00",
+    "relationship": "The baseline was used to review the Flow V4 architecture. The public core is an allowlisted extraction, not a byte-identical deployment release."
+  },
+  "nearest_frozen_integration_release": {
+    "schema": "ascendop.flow-release.v4",
+    "release_generation": "32ce22f09f83139e90a59b8a24b792916c31b536cfe50158825f95ff63f114b9",
+    "created_at": "2026-08-13T03:50:24.859621+00:00",
+    "wire_version": 3,
+    "control_database_schema": 12,
+    "component_generations": {
+      "protocol": "1fc5e3c1127b5c1d9e90ebb572a69b61863f9c28e79544cda9684b63293fc797",
+      "control": "8e2fce888ed62263466f84b83e8b945342c47aa7fb78f822adb826200af3d7c2",
+      "agent_runner": "ab2dd9f5005137990db5df0eeaa868acf4b3f00ebcce46ec861838653891c9eb",
+      "daemon": "fb4fced430ebce3c2fefe718c5eb29aa3d3d5ac3796d6ba439f08e8788f8e45c",
+      "engine": "3ad10441475f081a",
+      "transport": "e91a4e675ec7eec799b6a4f238510be86ed129febe8742954104fdd166f02f16"
+    },
+    "archive_sha256": {
+      "protocol": "3efb98bbbcd64a0b1ba04aa57d5bf896ee62164889316ee9d41b72edb2e43162",
+      "control": "53c165d8b2fee0ad772e1b002581cd21fb094a679b35304839319d15bafeb67e",
+      "agent_runner": "4e3aedfa78f84d9fed035af55adecc735c012a29e67e855a9d62afb6e3bac042",
+      "daemon": "455eea939c6af03b438e5f28876d3d3092784a4bfd2ebd60998762d6c7f3fbf5",
+      "engine": "b9388d1a82daee0f10bbfffc38bbbf41deb8c491f0649ae8e2efb569653b3d16",
+      "transport": "a7a7fde6e7ebae936fd3d4bcf50e9dcab37d095f023aa5976700bc7d89537feb"
+    }
+  },
+  "allowlisted_component_digests": {
+    "protocol-source": "dfff684fa0ca643bac6a2f705007d1b1b142f9a71aec882072a6ae6b4e471763",
+    "protocol-tests": "4cc64a2b30ff0545536f0a28482b2c5a5e80e0859096b3620c17a4b221261563",
+    "control-source": "0207ada4189694d89f9b25a11f01688f9737accb00ca2fd83145be7e7ce4e5ac",
+    "control-tests": "b3df7419be94244c67b51056e9964f50f94646194db65f006ad89e5e9d94fd6b",
+    "agent-runner-source": "981bb960fcdfb74a0a2b570b69e2e6a4306a5b54709fe623be5b443626e20229",
+    "agent-runner-tests": "7dc97eb969362b7dadcc800f2c62715982bceefd18efeda8062d69ec1c057ec8",
+    "daemon-automation": "36631aaf6a20fe84d5b375941d6884ca9644b54e03a612d6d6bcdc2ee7aa808c",
+    "daemon-control-plane": "10d0f3039fbeddf5027d362318183a3f99a1340480a46d15d96f62e49b6e01f7",
+    "daemon-core": "b87d1433acbc2b566a93775f6942d93b2abeccff6683a11cbcb762b22362873f",
+    "daemon-exchange": "6fb87bade8c9c24646fddb97af0b8da9a60a825d1444e968f8382b94fd63655b",
+    "daemon-observability": "8d2d3249315d46e3b83eb52530ad94f1c99a76319c395f920a44057824554a03",
+    "daemon-registry": "efc01cd0c98472827b82e91df7f24ab6dc95ddfc741a1909840638892a908cea",
+    "daemon-runtime": "c8f7d2b613a6735320182939dff25b2e02246809fff4bbb581a14c61446f2ed0",
+    "daemon-storage": "7f14b44fe7213f9130915a16a59ee2fb368d119c8b6e2b1298a2d0bf707fc767",
+    "daemon-workflow": "2953c0565c2ec25eee66b29523ca77f8c7934e45846cd207bc2e5a2f53bc365f"
+  },
+  "excluded_components": [
+    "daemon resident bootstrap and historical compatibility bridge",
+    "GitPartner and endpoint Engine implementation",
+    "endpoint, node, and service configuration",
+    "operator source, test cases, profiles, payloads, and results",
+    "official evaluation implementation and policy",
+    "credentials, runtime state, queues, databases, and logs",
+    "deployment bootstrap and machine-specific paths"
+  ]
+}

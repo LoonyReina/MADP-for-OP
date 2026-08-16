@@ -8,7 +8,17 @@ from typing import Any, Mapping
 
 
 VARIABLE_REGISTRY_SCHEMA = "ascendop.protocol-variable-registry.v3"
-SUPPORTED_TYPES = {"enum", "integer", "number", "span", "string", "token"}
+SUPPORTED_TYPES = {
+    "boolean",
+    "enum",
+    "integer",
+    "number",
+    "object",
+    "span",
+    "string",
+    "string-list",
+    "token",
+}
 
 
 class VariableRegistryError(ValueError):
@@ -27,7 +37,12 @@ class VariableDefinition:
     def validate(self, value: Any) -> Any:
         if value is None:
             return None
-        if self.value_type in {"integer", "span"}:
+        if self.value_type == "boolean":
+            if not isinstance(value, bool):
+                raise VariableRegistryError(
+                    f"{self.variable_id} must be boolean"
+                )
+        elif self.value_type in {"integer", "span"}:
             if isinstance(value, bool) or not isinstance(value, int):
                 raise VariableRegistryError(
                     f"{self.variable_id} must be an integer"
@@ -43,6 +58,32 @@ class VariableDefinition:
                     f"{self.variable_id} must be non-empty text"
                 )
             value = value.strip()
+        elif self.value_type == "string-list":
+            if not isinstance(value, list) or any(
+                not isinstance(item, str) or not item.strip() for item in value
+            ):
+                raise VariableRegistryError(
+                    f"{self.variable_id} must be a list of non-empty text values"
+                )
+            value = [item.strip() for item in value]
+            if len(value) != len(set(value)):
+                raise VariableRegistryError(
+                    f"{self.variable_id} must not contain duplicate values"
+                )
+        elif self.value_type == "object":
+            if not isinstance(value, Mapping) or any(
+                not isinstance(key, str) or not key.strip() for key in value
+            ):
+                raise VariableRegistryError(
+                    f"{self.variable_id} must be an object with non-empty text keys"
+                )
+            value = dict(value)
+            try:
+                json.dumps(value, ensure_ascii=True, allow_nan=False)
+            except (TypeError, ValueError) as exc:
+                raise VariableRegistryError(
+                    f"{self.variable_id} must contain JSON-compatible values"
+                ) from exc
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             if self.minimum is not None and value < self.minimum:
                 raise VariableRegistryError(

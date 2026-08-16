@@ -4,6 +4,7 @@
   "backend_pool": "910b-cann90",
   "environment": {"soc": ["Ascend910B"], "cann": ["9.0.0"], "operating_systems": ["linux-aarch64"]},
   "capabilities": ["operator-test", "profiler"],
+  "runtime_compatibility": [],
   "routing": {"mode": "dynamic"},
   "budget": {"class": "standard", "requested_device_session_seconds": 210, "policy": "daemon-approved-v1"},
   "origin_workspace": "operators_workspace/Example",

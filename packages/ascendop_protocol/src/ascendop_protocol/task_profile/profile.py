@@ -8,6 +8,10 @@ from typing import Any, Mapping
 TASK_PROFILE_SCHEMA = "ascendop.task-execution-profile.v1"
 ROUTE_MODES = {"dynamic", "pinned"}
 BUDGET_CLASSES = {"standard", "heavy", "diagnostic", "maintenance"}
+RUNTIME_COMPATIBILITY_FLAGS = {
+    "correctness-single-round-custom-op",
+    "ge-fixed-output-dtype-fallback",
+}
 
 
 class TaskProfileError(ValueError):
@@ -27,6 +31,8 @@ class TaskExecutionProfile:
     budget_class: str
     requested_device_session_seconds: int | None
     origin_workspace: str
+    runtime_compatibility: tuple[str, ...]
+    runtime_operator_name: str
 
     def requirements(self) -> dict[str, Any]:
         value = {
@@ -70,6 +76,13 @@ def parse_task_execution_profile(raw: Mapping[str, Any]) -> TaskExecutionProfile
             "budget.requested_device_session_seconds must be a positive integer"
         )
     origin_workspace = _relative_path(raw.get("origin_workspace"), "origin_workspace")
+    extensions = raw.get("extensions", {})
+    if not isinstance(extensions, Mapping):
+        raise TaskProfileError("extensions must be an object")
+    runtime_operator_name = _optional_text(
+        extensions.get("ascendop.profiler/operator_name"),
+        "extensions.ascendop.profiler/operator_name",
+    ) or task_id
     return TaskExecutionProfile(
         task_id=task_id,
         backend_pool=backend_pool,
@@ -84,7 +97,30 @@ def parse_task_execution_profile(raw: Mapping[str, Any]) -> TaskExecutionProfile
         budget_class=budget_class,
         requested_device_session_seconds=requested,
         origin_workspace=origin_workspace,
+        runtime_compatibility=_runtime_compatibility(
+            raw.get("runtime_compatibility")
+        ),
+        runtime_operator_name=runtime_operator_name,
     )
+
+
+def _runtime_compatibility(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if value == []:
+        return ()
+    flags = _text_tuple(value, "runtime_compatibility")
+    duplicates = sorted({item for item in flags if flags.count(item) > 1})
+    if duplicates:
+        raise TaskProfileError(
+            "runtime_compatibility contains duplicates: " + ", ".join(duplicates)
+        )
+    unsupported = sorted(set(flags) - RUNTIME_COMPATIBILITY_FLAGS)
+    if unsupported:
+        raise TaskProfileError(
+            "unsupported runtime compatibility: " + ", ".join(unsupported)
+        )
+    return flags
 
 
 def _object(value: Any, field: str) -> Mapping[str, Any]:

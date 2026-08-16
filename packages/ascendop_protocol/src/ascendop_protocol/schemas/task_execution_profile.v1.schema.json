@@ -18,6 +18,16 @@
       }
     },
     "capabilities": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "runtime_compatibility": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "correctness-single-round-custom-op",
+          "ge-fixed-output-dtype-fallback"
+        ]
+      }
+    },
     "routing": {"type": "object", "required": ["mode"], "properties": {"mode": {"enum": ["dynamic", "pinned"]}, "endpoint_id": {"type": "string"}}},
     "budget": {"type": "object", "required": ["class"], "properties": {"class": {"enum": ["standard", "heavy", "diagnostic", "maintenance"]}, "requested_device_session_seconds": {"type": ["integer", "null"], "minimum": 1}, "policy": {"type": "string"}}},
     "origin_workspace": {"type": "string", "minLength": 1},

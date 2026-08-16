@@ -50,6 +50,26 @@ def canonical_tree_digest(root: Path) -> str:
     return digest.hexdigest()
 
 
+def lineage_tree_digest(root: Path) -> str:
+    """Return the raw source-lineage identity used by SOURCE_LINEAGE.json."""
+
+    digest = hashlib.sha256()
+    if not root.exists():
+        return ""
+    files = [root] if root.is_file() else sorted(
+        item for item in root.rglob("*") if item.is_file()
+    )
+    for path in files:
+        relative = path.name if root.is_file() else path.relative_to(root).as_posix()
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
 def project_digest(files: Sequence[Mapping[str, Any]]) -> str:
     digest = hashlib.sha256()
     for item in sorted(files, key=lambda value: str(value["path"])):

@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.windows-bootstrap-attempt.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "attempt_id",
+    "probe_id",
+    "task_name",
+    "registration_generation",
+    "task_definition_digest",
+    "workspace_root",
+    "host",
+    "process",
+    "release_generation",
+    "journal_path",
+    "started_at_utc",
+    "last_event_at_utc",
+    "state",
+    "boundaries",
+    "failure"
+  ],
+  "properties": {
+    "schema": {"const": "ascendop.windows-bootstrap-attempt.v1"},
+    "attempt_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "probe_id": {"type": "string", "minLength": 1},
+    "task_name": {"type": "string", "minLength": 1},
+    "registration_generation": {"type": "string", "minLength": 1},
+    "task_definition_digest": {
+      "type": "string",
+      "pattern": "^$|^[0-9a-f]{64}$"
+    },
+    "workspace_root": {"type": "string", "minLength": 1},
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["host_id", "boot_id"],
+      "properties": {
+        "host_id": {"type": "string", "minLength": 1},
+        "boot_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "process": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pid", "start_token", "interpreter"],
+      "properties": {
+        "pid": {"type": "integer", "minimum": 1},
+        "start_token": {"type": "string"},
+        "interpreter": {"type": "string", "minLength": 1}
+      }
+    },
+    "release_generation": {"type": "string"},
+    "journal_path": {"type": "string", "minLength": 1},
+    "started_at_utc": {"type": "string", "minLength": 1},
+    "last_event_at_utc": {"type": "string", "minLength": 1},
+    "state": {
+      "enum": ["running", "succeeded", "paused", "failed", "quarantined"]
+    },
+    "boundaries": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sequence",
+          "boundary",
+          "state",
+          "observed_at_utc",
+          "monotonic_ns",
+          "details"
+        ],
+        "properties": {
+          "sequence": {"type": "integer", "minimum": 1, "maximum": 8},
+          "boundary": {
+            "enum": [
+              "demand_accepted",
+              "task_instance_visible",
+              "action_started",
+              "python_entered",
+              "generation_verified",
+              "child_adopted_or_started",
+              "resident_probe_ready",
+              "bootstrap_terminal"
+            ]
+          },
+          "state": {"enum": ["pending", "observed", "missing", "failed"]},
+          "observed_at_utc": {"type": "string"},
+          "monotonic_ns": {"type": "integer", "minimum": 0},
+          "details": {"type": "object"}
+        }
+      }
+    },
+    "failure": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["failure_class", "message", "boundary"],
+          "properties": {
+            "failure_class": {"type": "string", "minLength": 1},
+            "message": {"type": "string", "minLength": 1},
+            "boundary": {"type": "string", "minLength": 1}
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"ascendop.control-command-receipt.v1","type":"object","required":["schema","command_id","status","completed_at","result"],"properties":{"schema":{"const":"ascendop.control-command-receipt.v1"},"status":{"enum":["completed","failed","rejected"]},"result":{"type":"object"}},"additionalProperties":true}

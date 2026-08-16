@@ -17,7 +17,7 @@
         "properties": {
           "id": {"type": "string", "minLength": 1},
           "layer": {"type": "string", "minLength": 1},
-          "type": {"enum": ["enum", "integer", "number", "span", "string", "token"]},
+          "type": {"enum": ["enum", "integer", "number", "span", "string", "string-list", "token"]},
           "unit": {"type": "string", "minLength": 1},
           "default": {},
           "minimum": {"type": ["number", "null"]},

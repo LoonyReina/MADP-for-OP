@@ -11,6 +11,8 @@ from typing import Any, Iterable, Mapping
 
 FLOW_SCHEMA = "ascendop.flow.request.v3"
 FLOW_VERSION = 3
+POSTPROCESS_RECOVERY_SCHEMA = "ascendop.flow.postprocess-recovery.v1"
+POSTPROCESS_RECOVERY_VERSION = 1
 # GitPartner transports individual files below 1 MiB. Wire V3 has no aggregate
 # payload limit; it obtains that property by allowing an unbounded part count.
 PART_MAX_BYTES = 960 * 1024
@@ -24,6 +26,7 @@ EXTENSION_ID = re.compile(
 OPERATION_KINDS = {
     "operator-test",
     "diagnostic-profile",
+    "diagnostic-correctness-replay",
     "cache-prewarm",
     "maintenance",
 }
@@ -95,6 +98,12 @@ class ValidatedEnvelope:
     payload_bytes: int
 
 
+@dataclass(frozen=True)
+class ValidatedPostprocessRecovery:
+    request: dict[str, Any]
+    digest: str
+
+
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -114,6 +123,91 @@ def canonical_json(value: Any) -> str:
 
 def canonical_digest(value: Any) -> str:
     return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
+
+
+def validate_postprocess_recovery_request(
+    raw: Mapping[str, Any],
+) -> ValidatedPostprocessRecovery:
+    """Validate the only same-attempt execution recovery allowed by Wire V3.
+
+    The request can reopen bounded idempotent host/export stages. It never
+    creates a request or attempt and it cannot name a device stage.
+    """
+
+    if not isinstance(raw, Mapping):
+        raise FlowV3ProtocolError(
+            "invalid-postprocess-recovery",
+            "postprocess recovery request must be an object",
+        )
+    required = {
+        "schema",
+        "version",
+        "recovery_id",
+        "request_id",
+        "attempt_id",
+        "engine_job_id",
+        "endpoint_id",
+        "endpoint_generation",
+        "terminal_digest",
+        "terminal_revision",
+        "stages",
+        "max_stage_attempts",
+        "created_at",
+        "reason",
+    }
+    unknown = sorted(set(raw) - required)
+    missing = sorted(required - set(raw))
+    if missing or unknown:
+        detail = []
+        if missing:
+            detail.append("missing=" + ",".join(missing))
+        if unknown:
+            detail.append("unknown=" + ",".join(unknown))
+        raise FlowV3ProtocolError(
+            "invalid-postprocess-recovery-fields",
+            "postprocess recovery fields are not exact: " + " ".join(detail),
+        )
+    request = copy.deepcopy(dict(raw))
+    require_exact(request, "schema", POSTPROCESS_RECOVERY_SCHEMA)
+    require_exact(request, "version", POSTPROCESS_RECOVERY_VERSION)
+    for field in (
+        "recovery_id",
+        "request_id",
+        "attempt_id",
+        "engine_job_id",
+        "endpoint_id",
+        "endpoint_generation",
+    ):
+        token(request.get(field), field)
+    sha256(request.get("terminal_digest"), "terminal_digest")
+    nonnegative_int(request.get("terminal_revision"), "terminal_revision")
+    stages = string_list(request.get("stages"), "stages")
+    if not stages or len(stages) > 8 or len(set(stages)) != len(stages):
+        raise FlowV3ProtocolError(
+            "invalid-postprocess-recovery-stages",
+            "postprocess recovery requires 1..8 unique stage names",
+            field="stages",
+        )
+    if positive_int(request.get("max_stage_attempts"), "max_stage_attempts") != 1:
+        raise FlowV3ProtocolError(
+            "invalid-postprocess-recovery-attempts",
+            "postprocess recovery permits exactly one central stage attempt",
+            field="max_stage_attempts",
+        )
+    timestamp(request.get("created_at"), "created_at")
+    reason = str(request.get("reason") or "").strip()
+    if not reason or len(reason) > 1000:
+        raise FlowV3ProtocolError(
+            "invalid-postprocess-recovery-reason",
+            "postprocess recovery reason must contain 1..1000 characters",
+            field="reason",
+        )
+    request["stages"] = stages
+    request["reason"] = reason
+    return ValidatedPostprocessRecovery(
+        request=request,
+        digest=canonical_digest(request),
+    )
 
 
 def document_digest(value: Any) -> str:
@@ -241,7 +335,75 @@ def validate_envelope(raw: Mapping[str, Any]) -> ValidatedEnvelope:
     resources = object_value(execution.get("resources"), "execution.resources")
     for field in ("host_cpu_weight", "host_memory_mb", "host_io_weight", "device_count"):
         nonnegative_int(resources.get(field), f"execution.resources.{field}")
+    capabilities = string_list(
+        execution.get("required_capabilities", []),
+        "execution.required_capabilities",
+    )
+    if "runtime-operator-identity" in capabilities:
+        token(
+            execution.get("runtime_operator_name"),
+            "execution.runtime_operator_name",
+        )
     stages = validate_stages(execution.get("stages"))
+    for index, stage in enumerate(stages):
+        if (
+            stage["resource_class"] == "device"
+            and int(stage.get("timeout_seconds", 0) or 0) > granted
+        ):
+            raise FlowV3ProtocolError(
+                "stage-budget-overgrant",
+                "device stage timeout cannot exceed the granted device session",
+                field=f"execution.stages[{index}].timeout_seconds",
+            )
+    if "device-stage-budget-ledger" in capabilities:
+        ledger = object_value(
+            execution.get("device_stage_budget"),
+            "execution.device_stage_budget",
+        )
+        if str(ledger.get("policy") or "") != "lease-wall-with-stage-guards-v1":
+            raise FlowV3ProtocolError(
+                "unsupported-budget-ledger",
+                "unsupported device stage budget ledger policy",
+                field="execution.device_stage_budget.policy",
+            )
+        lease_wall = positive_int(
+            ledger.get("lease_wall_seconds"),
+            "execution.device_stage_budget.lease_wall_seconds",
+        )
+        if lease_wall != granted:
+            raise FlowV3ProtocolError(
+                "budget-ledger-mismatch",
+                "device stage budget lease wall must equal the approved grant",
+                field="execution.device_stage_budget.lease_wall_seconds",
+            )
+        if ledger.get("additive") is not False:
+            raise FlowV3ProtocolError(
+                "invalid-budget-ledger",
+                "device stage timeout guards must be non-additive",
+                field="execution.device_stage_budget.additive",
+            )
+        raw_stage_timeouts = object_value(
+            ledger.get("stage_timeout_seconds"),
+            "execution.device_stage_budget.stage_timeout_seconds",
+        )
+        expected_stage_timeouts = {
+            str(stage["name"]): int(stage.get("timeout_seconds", 0) or 0)
+            for stage in stages
+            if stage["resource_class"] == "device"
+        }
+        normalized_stage_timeouts = {
+            str(name): nonnegative_int(
+                value,
+                f"execution.device_stage_budget.stage_timeout_seconds.{name}",
+            )
+            for name, value in raw_stage_timeouts.items()
+        }
+        if normalized_stage_timeouts != expected_stage_timeouts:
+            raise FlowV3ProtocolError(
+                "budget-ledger-mismatch",
+                "device stage budget ledger does not match the stage plan",
+                field="execution.device_stage_budget.stage_timeout_seconds",
+            )
 
     retry_policy = object_section(envelope, "retry_policy")
     token(retry_policy.get("policy_id"), "retry_policy.policy_id")
@@ -292,6 +454,7 @@ def validate_envelope(raw: Mapping[str, Any]) -> ValidatedEnvelope:
         operation_kind=operation_kind,
         execution=execution,
         stages=stages,
+        retry_policy=retry_policy,
     )
     return ValidatedEnvelope(
         envelope=envelope,
@@ -305,6 +468,7 @@ def validate_operation_contract(
     operation_kind: str,
     execution: dict[str, Any],
     stages: list[dict[str, Any]],
+    retry_policy: dict[str, Any],
 ) -> None:
     names = [str(stage["name"]) for stage in stages]
     if "operator-build" in names and "runtime-install" in names:
@@ -356,6 +520,51 @@ def validate_operation_contract(
                 "diagnostic-not-publishable",
                 "diagnostic-profile cannot be publish eligible",
                 field="execution.publish_eligible",
+            )
+    if operation_kind == "diagnostic-correctness-replay":
+        if not execution["correctness_required"] or "correctness" not in names:
+            raise FlowV3ProtocolError(
+                "diagnostic-correctness-required",
+                "diagnostic-correctness-replay requires a correctness stage",
+                field="execution.stages",
+            )
+        if execution["performance_mode"] != "none":
+            raise FlowV3ProtocolError(
+                "diagnostic-correctness-only",
+                "diagnostic-correctness-replay cannot run performance stages",
+                field="execution.performance_mode",
+            )
+        if execution["publish_eligible"]:
+            raise FlowV3ProtocolError(
+                "diagnostic-not-publishable",
+                "diagnostic-correctness-replay cannot be publish eligible",
+                field="execution.publish_eligible",
+            )
+        if any(name.startswith("performance-") for name in names):
+            raise FlowV3ProtocolError(
+                "diagnostic-correctness-only",
+                "diagnostic-correctness-replay cannot contain performance stages",
+                field="execution.stages",
+            )
+    if operation_kind in {
+        "diagnostic-profile",
+        "diagnostic-correctness-replay",
+    }:
+        if int(retry_policy["max_execution_attempts"]) != 1:
+            raise FlowV3ProtocolError(
+                "diagnostic-one-shot",
+                "diagnostic operations allow exactly one execution attempt",
+                field="retry_policy.max_execution_attempts",
+            )
+        if any(
+            str(stage["resource_class"]) == "device"
+            and int(stage.get("max_stage_retries", 0) or 0) != 0
+            for stage in stages
+        ):
+            raise FlowV3ProtocolError(
+                "diagnostic-device-no-retry",
+                "diagnostic device stages cannot be retried",
+                field="execution.stages",
             )
 
 
@@ -421,6 +630,25 @@ def validate_stages(value: Any) -> list[dict[str, Any]]:
                 "stage idempotent must be boolean",
                 field=f"execution.stages[{index}].idempotent",
             )
+        run_after_failure = stage.get("run_after_failure", False)
+        if not isinstance(run_after_failure, bool):
+            raise FlowV3ProtocolError(
+                "invalid-boolean",
+                "stage run_after_failure must be boolean",
+                field=f"execution.stages[{index}].run_after_failure",
+            )
+        if run_after_failure and (
+            not bool(stage.get("idempotent")) or resource_class == "device"
+        ):
+            raise FlowV3ProtocolError(
+                "invalid-failure-terminalizer",
+                "run-after-failure stages must be idempotent and non-device",
+                field=f"execution.stages[{index}]",
+            )
+        failure_depends_on = string_list(
+            stage.get("failure_depends_on", []),
+            f"execution.stages[{index}].failure_depends_on",
+        )
         nonnegative_int(
             stage.get("timeout_seconds", 0),
             f"execution.stages[{index}].timeout_seconds",
@@ -431,6 +659,8 @@ def validate_stages(value: Any) -> list[dict[str, Any]]:
                 "name": name,
                 "resource_class": resource_class,
                 "depends_on": depends_on,
+                "run_after_failure": run_after_failure,
+                "failure_depends_on": failure_depends_on,
             }
         )
     for stage in stages:
@@ -442,10 +672,26 @@ def validate_stages(value: Any) -> list[dict[str, Any]]:
                 + ", ".join(unknown_dependencies),
                 field="execution.stages",
             )
+        unknown_failure_dependencies = sorted(
+            set(stage["failure_depends_on"]) - names
+        )
+        if unknown_failure_dependencies:
+            raise FlowV3ProtocolError(
+                "unknown-stage-dependency",
+                f"{stage['name']} has unknown failure dependencies: "
+                + ", ".join(unknown_failure_dependencies),
+                field="execution.stages",
+            )
         if stage["name"] in stage["depends_on"]:
             raise FlowV3ProtocolError(
                 "cyclic-stage-dependency",
                 f"{stage['name']} depends on itself",
+                field="execution.stages",
+            )
+        if stage["name"] in stage["failure_depends_on"]:
+            raise FlowV3ProtocolError(
+                "cyclic-stage-dependency",
+                f"{stage['name']} failure-depends on itself",
                 field="execution.stages",
             )
     ensure_acyclic(stages)

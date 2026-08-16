@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.solver-candidate-proposal.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "campaign", "operator", "candidate_version", "case_version",
+    "base_version", "source_before_digest", "intent", "observed_signal",
+    "primary_hypothesis", "counter_hypothesis", "router_gap",
+    "consulted_evidence", "optimization_method_decision", "skill_feedback",
+    "shared_knowledge_decision", "changed_source", "risks", "hardware",
+    "created_at"
+  ],
+  "properties": {
+    "schema": {"const": "ascendop.solver-candidate-proposal.v1"},
+    "campaign": {"type": "string", "minLength": 1},
+    "operator": {"type": "string", "minLength": 1},
+    "candidate_version": {"type": "string", "minLength": 1},
+    "case_version": {"type": "string", "minLength": 1},
+    "base_version": {"type": "string", "minLength": 1},
+    "source_before_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "intent": {"type": "string", "minLength": 1},
+    "observed_signal": {"type": "string", "minLength": 1},
+    "primary_hypothesis": {"type": "string", "minLength": 1},
+    "counter_hypothesis": {"type": "string", "minLength": 1},
+    "router_gap": {"type": "string", "minLength": 1},
+    "consulted_evidence": {
+      "type": "array", "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "optimization_method_decision": {"type": "string", "minLength": 1},
+    "skill_feedback": {"type": "string", "minLength": 1},
+    "shared_knowledge_decision": {"type": "string", "minLength": 1},
+    "changed_source": {
+      "type": "array", "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "risks": {
+      "type": "object", "additionalProperties": false,
+      "required": ["correctness", "performance", "infrastructure"],
+      "properties": {
+        "correctness": {"type": "string", "minLength": 1},
+        "performance": {"type": "string", "minLength": 1},
+        "infrastructure": {"type": "string", "minLength": 1}
+      }
+    },
+    "hardware": {"enum": ["910B2", "910B4", "unknown"]},
+    "created_at": {"type": "string", "minLength": 1}
+  }
+}

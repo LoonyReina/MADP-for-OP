@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"ascendop.public-resource.v1","type":"object","required":["schema","resource_type","resource_id","revision","observed_at","attributes"],"properties":{"schema":{"const":"ascendop.public-resource.v1"},"attributes":{"type":"object"}},"additionalProperties":false}

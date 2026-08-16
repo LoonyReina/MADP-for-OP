@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ascendop-control"
+version = "4.5.0"
+description = "Durable action, lease, and receipt control for MADP"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+dependencies = ["ascendop-protocol==4.5.0"]
+
+[project.scripts]
+ascendop-control-api = "ascendop_control.api.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.agent-output-contract.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "output_id", "output_kind", "isolated_path", "canonical_path",
+    "required", "must_change", "max_bytes", "target_before", "identity"
+  ],
+  "properties": {
+    "schema": {"const": "ascendop.agent-output-contract.v1"},
+    "output_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "output_kind": {
+      "enum": [
+        "pending-evidence-repair",
+        "solver-blocker",
+        "solver-candidate-proposal",
+        "solver-diagnostic-request"
+      ]
+    },
+    "isolated_path": {
+      "type": "string",
+      "pattern": "^\\.ascendop-output/.+"
+    },
+    "canonical_path": {"type": "string", "minLength": 1},
+    "required": {"type": "boolean"},
+    "must_change": {"type": "boolean"},
+    "max_bytes": {"type": "integer", "minimum": 1, "maximum": 4194304},
+    "target_before": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state"],
+      "properties": {
+        "state": {"enum": ["present", "absent"]},
+        "sha256": {"type": "string", "pattern": "^$|^[0-9a-f]{64}$"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"state": {"const": "present"}}},
+          "then": {
+            "required": ["sha256"],
+            "properties": {
+              "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+            }
+          },
+          "else": {
+            "properties": {"sha256": {"enum": [""]}}
+          }
+        }
+      ]
+    },
+    "identity": {"type": "object"}
+  }
+}

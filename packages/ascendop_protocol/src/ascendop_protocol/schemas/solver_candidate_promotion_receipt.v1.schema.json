@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.solver-candidate-promotion-receipt.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "action_id", "iteration_id", "operator", "candidate_version",
+    "case_version", "source_after_digest", "pending_path", "workflow_output",
+    "promoted_at"
+  ],
+  "properties": {
+    "schema": {"const": "ascendop.solver-candidate-promotion-receipt.v1"},
+    "action_id": {"type": "string", "minLength": 1},
+    "iteration_id": {"type": "string", "minLength": 1},
+    "operator": {"type": "string", "minLength": 1},
+    "candidate_version": {"type": "string", "minLength": 1},
+    "case_version": {"type": "string", "minLength": 1},
+    "source_after_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "pending_path": {"type": "string", "minLength": 1},
+    "workflow_output": {"type": "string"},
+    "promoted_at": {"type": "string", "minLength": 1}
+  }
+}

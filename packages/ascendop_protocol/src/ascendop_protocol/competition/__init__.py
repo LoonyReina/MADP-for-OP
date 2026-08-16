@@ -11,6 +11,7 @@ from .project_evidence import (
     ProjectEvidence,
     canonical_tree_digest,
     collect_project_evidence,
+    lineage_tree_digest,
     project_digest,
     sha256_file,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "ProjectEvidence",
     "canonical_tree_digest",
     "collect_project_evidence",
+    "lineage_tree_digest",
     "project_digest",
     "sha256_file",
     "validate_official_problem_snapshot",

@@ -1,0 +1,2 @@
+class ControlRepositoryError(RuntimeError):
+    pass

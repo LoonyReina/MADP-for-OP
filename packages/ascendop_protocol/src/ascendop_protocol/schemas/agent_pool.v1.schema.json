@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.agent-pool.v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "pool_id",
+    "enabled",
+    "roles",
+    "drivers",
+    "required_capabilities",
+    "priority",
+    "registration_generation"
+  ],
+  "properties": {
+    "schema": {"const": "ascendop.agent-pool.v1"},
+    "pool_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "enabled": {"type": "boolean"},
+    "roles": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"enum": ["solver", "tester"]}
+    },
+    "drivers": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"enum": ["codex-ide-task", "codex-cli", "claude-code-cli", "kimi-code-cli"]}
+    },
+    "required_capabilities": {
+      "type": "object",
+      "additionalProperties": {"type": "boolean"}
+    },
+    "priority": {"type": "integer"},
+    "registration_generation": {"type": "string", "minLength": 1}
+  },
+  "additionalProperties": false
+}

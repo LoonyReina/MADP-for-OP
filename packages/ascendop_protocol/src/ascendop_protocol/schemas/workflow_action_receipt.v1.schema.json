@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.workflow-action-receipt.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "action_id", "status", "worker_id", "producer_generation", "started_at", "completed_at", "return_code", "details"],
+  "properties": {
+    "schema": {"const": "ascendop.workflow-action-receipt.v1"},
+    "action_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["succeeded", "failed", "cancelled"]},
+    "worker_id": {"type": "string", "minLength": 1},
+    "producer_generation": {"type": "string", "minLength": 1},
+    "started_at": {"type": "string", "minLength": 1},
+    "completed_at": {"type": "string", "minLength": 1},
+    "return_code": {"type": ["integer", "null"]},
+    "details": {"type": "object"}
+  }
+}

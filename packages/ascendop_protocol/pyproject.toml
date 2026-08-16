@@ -1,14 +1,15 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ascendop-protocol"
-version = "3.0.0"
-description = "Shared immutable contracts for AscendOP Flow V3"
-requires-python = ">=3.10"
+version = "4.5.0"
+description = "Typed contracts for MADP multi-agent workflows"
+readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
+requires-python = ">=3.10"
 dependencies = []
 
 [tool.setuptools.packages.find]

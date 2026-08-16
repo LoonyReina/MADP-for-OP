@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.agent-reference-evidence.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "kind",
+    "source_id",
+    "index_path",
+    "index_sha256",
+    "root_path",
+    "root_digest",
+    "file_count",
+    "total_bytes",
+    "include_suffixes",
+    "include_paths",
+    "relation",
+    "provenance",
+    "limitations"
+  ],
+  "properties": {
+    "schema": {"const": "ascendop.agent-reference-evidence.v1"},
+    "kind": {"const": "reference-material"},
+    "source_id": {"type": "string", "minLength": 1},
+    "index_path": {"type": "string", "minLength": 1},
+    "index_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "root_path": {"type": "string", "minLength": 1},
+    "root_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "file_count": {"type": "integer", "minimum": 0},
+    "total_bytes": {"type": "integer", "minimum": 0},
+    "include_suffixes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^\\.[a-z0-9]+$"}
+    },
+    "include_paths": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "relation": {"type": "string", "minLength": 1},
+    "provenance": {"type": "object"},
+    "limitations": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}

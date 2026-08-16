@@ -1,6 +1,6 @@
 {
   "schema": "ascendop.protocol-schema-registry.v1",
-  "protocol_release": "3.0.0",
+  "protocol_release": "4.5.0",
   "entries": [
     {"schema_id": "ascendop.flow.request.v3", "path": "flow_request.v3.schema.json", "compatibility": "exact"},
     {"schema_id": "ascendop.protocol-variable-registry.v3", "path": "protocol_variable_registry.v3.schema.json", "compatibility": "exact"},
@@ -15,6 +15,31 @@
     {"schema_id": "ascendop.official-submission-receipt.v1", "path": "official_submission_receipt.v1.schema.json", "compatibility": "exact"},
     {"schema_id": "ascendop.reference-source-manifest.v1", "path": "reference_source_manifest.v1.schema.json", "compatibility": "exact"},
     {"schema_id": "ascendop.technique-card.v1", "path": "technique_card.v1.schema.json", "compatibility": "exact"},
-    {"schema_id": "ascendop.retrieval-decision.v1", "path": "retrieval_decision.v1.schema.json", "compatibility": "exact"}
+    {"schema_id": "ascendop.retrieval-decision.v1", "path": "retrieval_decision.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.operator-reference-projection.v1", "path": "operator_reference_projection.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.agent-reference-evidence.v1", "path": "agent_reference_evidence.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.board-action.v1", "path": "board_action.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.workflow-action.v1", "path": "workflow_action.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.workflow-action-receipt.v1", "path": "workflow_action_receipt.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.solver-diagnostic-request.v1", "path": "solver_diagnostic_request.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.agent-registration.v1", "path": "agent_registration.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.agent-pool.v1", "path": "agent_pool.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.agent-action.v1", "path": "agent_action.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.agent-output-contract.v1", "path": "agent_output_contract.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.agent-output-seal.v1", "path": "agent_output_seal.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.agent-output-promotion-receipt.v1", "path": "agent_output_promotion_receipt.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.solver-candidate-proposal.v1", "path": "solver_candidate_proposal.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.solver-candidate-promotion-receipt.v1", "path": "solver_candidate_promotion_receipt.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.agent-action-receipt.v1", "path": "agent_action_receipt.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.agent-work-lease.v1", "path": "agent_work_lease.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.agent-iteration.v1", "path": "agent_iteration.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.agent-context-snapshot.v1", "path": "agent_context_snapshot.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.agent-turn-delivery.v1", "path": "agent_turn_delivery.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.control-command.v1", "path": "control_command.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.control-command-receipt.v1", "path": "control_command_receipt.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.public-resource.v1", "path": "public_resource.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.control-event.v1", "path": "control_event.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.windows-bootstrap-attempt.v1", "path": "windows_bootstrap_attempt.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.change-impact-policy.v1", "path": "change_impact_policy.v1.schema.json", "compatibility": "exact"}
   ]
 }

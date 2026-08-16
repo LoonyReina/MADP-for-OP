@@ -1,101 +1,118 @@
 # MADP for OP
 
-MADP for OP is a protocol-first, multi-agent development framework for hardware
-operators. It separates agent reasoning from durable workflow state and from the
-machines that build, test, and profile operator candidates.
+MADP for OP is a domain-adaptable protocol and control-plane core for
+multi-agent development workflows. It was extracted from AscendOP, where
+multiple coding agents iterate on operators while scarce test endpoints remain
+under deterministic, auditable control.
 
-> Current public milestone: a sanitized reconstruction of the AscendOP Flow V3
-> data-plane release created on 2026-08-07 PDT. Publication commits are created
-> when released and are not backdated; source dates and hashes are preserved in
-> tags and provenance records.
+This repository intentionally publishes the **MADP core**, not the complete
+AscendOP system. The public boundary contains typed contracts, durable action
+state, leases and receipts, provider-neutral Agent execution, the modern daemon
+control plane, and focused tests. GP/Engine architecture and interfaces are
+documented publicly; machine bindings, endpoint implementation, operator assets,
+and official evaluation stay in the private AscendOP deployment.
 
-## Core model
+## Core architecture
 
 ```text
-Solver / Tester agents
-        |
-        v
-typed protocol contracts and evidence
-        |
-        v
-daemon-owned control plane
-        |
-        v
-Wire V3 request and GitPartner transport
-        |
-        v
-profile-selected endpoint Engine
-        |
-        v
-structured correctness and performance results
+domain adapter                         GP / Engine port
+     |                                       ^
+     v                                       |
+typed immutable action -> daemon control -> approved external work
+     |                         |
+     v                         v
+Agent runner ------------> typed receipt + evidence
 ```
 
-Agents remain responsible for hypotheses, source changes, and case design. The
-framework constrains only side effects that must be reproducible: action identity,
-leases, dispatch, endpoint selection, execution, evidence, retry, and release
-state.
+The reasoning performed by an Agent is open-ended. MADP limits only the
+side-effect boundary: work is admitted as a typed action, claimed with a lease,
+completed with a receipt, and advanced by a control-plane gate. An Agent cannot
+silently select an endpoint, rewrite queue state, or invent a workflow gate.
 
-## What Flow V3 introduced
+## Published packages
 
-- Versioned, immutable Python and JSON contracts in `ascendop_protocol`.
-- A daemon-owned scheduler and SQLite control plane instead of a shared task file.
-- Endpoint-neutral requests carried over a versioned Wire V3 boundary.
-- A remote Engine with correctness, performance, and profiling stages.
-- Content-addressed release bundles for protocol, daemon, transport, and Engine.
-- GitPartner as an isolated transport implementation for heterogeneous endpoints.
+| Package | Responsibility |
+| --- | --- |
+| `ascendop-protocol` | Immutable action, workflow, management, evidence, and wire contracts. |
+| `ascendop-control` | SQLite-backed action state, leases, receipts, idempotency, and query/command services. |
+| `ascendop-agent-runner` | Serialized Agent execution, workspace isolation, provider drivers, heartbeat, and uncertain-turn recovery. |
+| `ascendop-tester-daemon` | Public modern control-plane slice: action coordination, scheduling, retry, storage, transport ports, observability, registries, and gates. |
 
-Flow V3 established the deployable data plane. It did not yet provide the complete
-serialized AgentAction adapter and resident multi-agent control loop later designed
-for Flow V4.
+The `ascendop_*` Python namespace is retained for compatibility with the
+reference deployment. The contracts themselves separate role, provider,
+transport, endpoint, and domain policy so another domain can replace the
+AscendOP profile without replacing the action lifecycle.
 
-## Repository layout
+## What is generic
 
-- `packages/ascendop_protocol`: shared Flow V3 schemas and Python contracts.
-- `tools/tester_daemon`: scheduler, control plane, exchange, workflow, and telemetry.
-- `engine_runtime`: the minimal endpoint Engine bundled with the release.
-- `GitPartner`: bounded Git-based transport and endpoint service implementation.
-- `docs/architecture`: milestone architecture and known limitations.
-- `release/flow-v3`: machine-readable source provenance.
+- configured Agent roles and provider drivers;
+- immutable actions and idempotency identities;
+- claim, run, uncertain, retry, completion, failure, and cancellation states;
+- leases, heartbeats, receipts, output seals, and evidence references;
+- daemon-owned gate authority and typed escalation;
+- pluggable domain adapters and external executor transports.
 
-## Local verification
+AscendOP supplies one reference profile: Solver and Tester roles, operator
+candidate identities, CANN endpoint capabilities, GitPartner transport, and
+correctness/performance evidence. Those choices are not requirements of MADP.
+See [Generality](docs/architecture/GENERALITY.md) and
+[Core boundary](docs/architecture/CORE_BOUNDARY.md). The implementation split is
+detailed in [Public daemon slice](docs/architecture/DAEMON_PUBLIC_SLICE.md), and
+the remote execution port in [GP and Engine boundary](docs/architecture/GP_ENGINE_BOUNDARY.md).
 
-The source requires Python 3.10 or newer. Compilation does not require accelerator
-hardware:
+## Repository boundary
 
-```bash
-python -m compileall -q packages/ascendop_protocol/src
-python -m compileall -q tools/tester_daemon/src
-python -m compileall -q GitPartner/src
-python -m compileall -q engine_runtime
-```
+Included:
 
-Editable installation of the control-plane packages is optional:
+- `packages/ascendop_protocol`
+- `packages/ascendop_control`
+- `packages/ascendop_agent_runner`
+- `packages/ascendop_daemon`
+- architecture documents, package tests, publication manifest, and provenance
+
+Not included:
+
+- daemon resident-service bootstrap and historical compatibility bridge;
+- GitPartner and endpoint Engine implementation, live routing, or machine bootstrap;
+- live topology, credentials, queues, databases, payloads, or results;
+- operator source, testcase collections, profiles, or official evaluation.
+
+The persistent local checkout lives at `AscendOP/code/MADP-for-OP`. Public
+updates are one-way, allowlisted exports from AscendOP core sources into this
+repository. See [Publication model](docs/architecture/PUBLICATION_MODEL.md).
+
+## Development
+
+Python 3.10 or newer is required.
 
 ```bash
 python -m pip install -e packages/ascendop_protocol
-python -m pip install -e tools/tester_daemon
-python -m pip install -e GitPartner
+python -m pip install -e packages/ascendop_control
+python -m pip install -e packages/ascendop_agent_runner
+python -m pip install -e packages/ascendop_daemon
+python -m pytest -q
 ```
 
-Endpoint execution additionally requires a deployment-specific topology, secrets,
-toolchain, and hardware profile. Those are deliberately absent from this repository.
+From the private AscendOP workspace, maintainers can check implementation drift
+without copying any unlisted component:
 
-## Public history
+```bash
+python scripts/sync_from_ascendop.py --ascendop-root .. --check
+```
 
-- `archive-2026-06-02`: Scheduler V2 append-only task ledger.
-- `archive-2026-08-07-flow-v3`: typed protocol and deployable endpoint data plane.
+Use `--apply` only after reviewing the manifest and source changes, then run the
+tests and publication scan before committing.
 
-See [HISTORY.md](HISTORY.md) and the
-[Flow V3 milestone note](docs/architecture/FLOW_V3_RELEASE.md) for the architectural
-transition.
+## Milestones
 
-## Security and license
+- `archive-2026-06-02`: Scheduler V2 source snapshot.
+- `archive-2026-08-07-flow-v3`: typed Flow V3 data-plane snapshot.
+- `archive-2026-08-16-flow-v4-core`: curated Flow V4 MADP core architecture.
 
-The public history excludes credentials, endpoint identities, private paths,
-operator implementations, benchmark artifacts, production queues, and official
-evaluation implementations. See [SECURITY.md](SECURITY.md) before preparing a
-deployment.
+Historical tags preserve the evolution of the project. The Flow V4 core tag is
+the first milestone with the deliberately narrow public boundary described
+above.
 
-Licensed under the Apache License 2.0. Ascend and other product names belong to
-their respective owners. This independent project is not affiliated with or
-endorsed by Huawei or OpenAI.
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).

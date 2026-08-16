@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.workflow-action.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "action_id", "idempotency_key", "action_kind", "campaign", "operator", "test_version", "board_revision", "producer_generation", "control_schema", "origin_workspace", "priority", "resource_class", "arguments", "candidate_identity", "artifacts", "created_at"],
+  "properties": {
+    "schema": {"const": "ascendop.workflow-action.v1"},
+    "action_id": {"type": "string", "minLength": 1},
+    "idempotency_key": {"type": "string", "minLength": 1},
+    "action_kind": {"type": "string", "minLength": 1},
+    "campaign": {"type": "string", "minLength": 1},
+    "operator": {"type": "string", "minLength": 1},
+    "test_version": {"type": "string"},
+    "board_revision": {"type": "string", "minLength": 1},
+    "producer_generation": {"type": "string", "minLength": 1},
+    "control_schema": {"type": "integer", "minimum": 1},
+    "origin_workspace": {"type": "string", "minLength": 1},
+    "priority": {"type": "integer"},
+    "resource_class": {"type": "string", "minLength": 1},
+    "arguments": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "positional", "options"],
+      "properties": {
+        "operation": {"type": "string", "minLength": 1},
+        "positional": {"type": "array", "items": {"type": "string"}},
+        "options": {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean", "null"]}}
+      }
+    },
+    "candidate_identity": {"type": "object"},
+    "artifacts": {"type": "array", "items": {"type": "object"}},
+    "parent_trace_id": {"type": "string"},
+    "deadline_at": {"type": "string"},
+    "retry_policy_ref": {"type": "string"},
+    "created_at": {"type": "string", "minLength": 1}
+  }
+}

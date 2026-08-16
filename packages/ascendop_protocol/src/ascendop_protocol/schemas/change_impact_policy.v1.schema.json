@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.change-impact-policy.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "policy_version",
+    "production_roots",
+    "ignored_patterns",
+    "offline_patterns",
+    "components"
+  ],
+  "properties": {
+    "schema": {"const": "ascendop.change-impact-policy.v1"},
+    "policy_version": {"type": "integer", "minimum": 1},
+    "production_roots": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "ignored_patterns": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "offline_patterns": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "components": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "component_id",
+          "import_domain",
+          "source_patterns",
+          "dependencies",
+          "artifact_kind",
+          "levels"
+        ],
+        "properties": {
+          "component_id": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+          "import_domain": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+          "source_patterns": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "dependencies": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^[a-z0-9-]+$"}
+          },
+          "artifact_kind": {"type": "string", "minLength": 1},
+          "levels": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["L0", "L1", "L2", "L3", "L4"],
+            "properties": {
+              "L0": {"$ref": "#/$defs/level"},
+              "L1": {"$ref": "#/$defs/level"},
+              "L2": {"$ref": "#/$defs/level"},
+              "L3": {"$ref": "#/$defs/level"},
+              "L4": {"$ref": "#/$defs/level"}
+            }
+          },
+          "consumer_levels": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["L0", "L1", "L2", "L3", "L4"],
+            "properties": {
+              "L0": {"$ref": "#/$defs/level"},
+              "L1": {"$ref": "#/$defs/level"},
+              "L2": {"$ref": "#/$defs/level"},
+              "L3": {"$ref": "#/$defs/level"},
+              "L4": {"$ref": "#/$defs/level"}
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "level": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pytest_targets", "checks"],
+      "properties": {
+        "pytest_targets": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "checks": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

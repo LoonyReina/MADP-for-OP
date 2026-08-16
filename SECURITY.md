@@ -1,21 +1,20 @@
 # Security policy
 
-Please report vulnerabilities privately through GitHub's security advisory feature
-instead of opening a public issue.
+Report vulnerabilities privately through GitHub Security Advisories.
 
-This repository intentionally excludes endpoint credentials, private hostnames,
-remote paths, operator submissions, test artifacts, and production queue state.
-Never commit secrets or live endpoint configuration. Use local environment files
-or a secret manager, and keep those files outside version control.
+This repository is a curated public core, not a deployment mirror. Its
+allowlisted synchronization boundary includes only the modern daemon
+control-plane slice. It excludes deployment entrypoints, compatibility bridges,
+concrete transport and Engine runtimes, live endpoint registries, operator
+workspaces, official evaluation, and generated state.
 
-In particular, do not commit:
+Never commit:
 
-- `api.txt`, SSH keys, access tokens, cookies, or credential-helper exports;
-- endpoint and node registries containing hostnames, addresses, users, or paths;
-- daemon configuration copied from a live deployment;
-- control databases, queues, receipts, payloads, results, profiles, or crash dumps;
-- operator submissions or private correctness and benchmark cases.
+- API keys, access tokens, cookies, SSH material, or credential-helper exports;
+- hostnames, addresses, user names, remote roots, or live endpoint identities;
+- daemon configuration, control databases, queues, leases, receipts, or logs;
+- operator submissions, private tests, profiles, payloads, or benchmark results.
 
-The example service files use the generic account `ascendop` and installation root
-`/opt/ascendop`. Replace them through deployment automation; do not patch public
-source with machine-specific values.
+Tests may use obvious non-secret values beginning with `sk-test-`. Publication
+scanning treats any other key-like token as a failure. Example paths and endpoint
+identifiers must be generic and non-routable.

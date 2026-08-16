@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.operator-reference-projection.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "campaign_id",
+    "operator_id",
+    "selection_owner",
+    "sources"
+  ],
+  "properties": {
+    "schema": {"const": "ascendop.operator-reference-projection.v1"},
+    "campaign_id": {"type": "string", "minLength": 1},
+    "operator_id": {"type": "string", "minLength": 1},
+    "selection_owner": {"const": "solver"},
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source_id",
+          "availability",
+          "relation",
+          "limitations"
+        ],
+        "properties": {
+          "source_id": {"type": "string", "minLength": 1},
+          "availability": {"enum": ["available", "not-found", "unavailable"]},
+          "relation": {"type": "string", "minLength": 1},
+          "root_path": {"type": "string", "minLength": 1},
+          "include_paths": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "provenance": {"type": "object"},
+          "limitations": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          }
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"availability": {"const": "available"}}},
+            "then": {"required": ["root_path", "provenance"]}
+          }
+        ]
+      }
+    }
+  }
+}

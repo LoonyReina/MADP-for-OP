@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.solver-diagnostic-request.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "producer",
+    "campaign",
+    "operator",
+    "case_version",
+    "result_version",
+    "blocker_generation",
+    "operation_kind",
+    "consulted_evidence",
+    "target",
+    "scope",
+    "requested_device_session_seconds",
+    "retry_policy",
+    "rationale",
+    "created_at"
+  ],
+  "properties": {
+    "schema": {"const": "ascendop.solver-diagnostic-request.v1"},
+    "producer": {"const": "solver"},
+    "campaign": {"type": "string", "minLength": 1},
+    "operator": {"type": "string", "minLength": 1},
+    "case_version": {"type": "string", "minLength": 1},
+    "result_version": {"type": "string", "minLength": 1},
+    "blocker_generation": {"type": "string", "minLength": 1},
+    "operation_kind": {
+      "enum": ["diagnostic-profile", "diagnostic-correctness-replay"]
+    },
+    "consulted_evidence": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["test_version", "source_sha256"],
+      "properties": {
+        "test_version": {"type": "string", "minLength": 1},
+        "source_sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}
+      }
+    },
+    "comparison_targets": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["test_version", "source_sha256"],
+        "properties": {
+          "test_version": {"type": "string", "minLength": 1},
+          "source_sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_selection",
+        "fresh_processes",
+        "profiler_mode",
+        "requested_artifacts"
+      ],
+      "properties": {
+        "case_selection": {"const": "all"},
+        "fresh_processes": {"const": 1},
+        "profiler_mode": {
+          "enum": ["none", "primary-all-cases", "primary-roofline-all-cases"]
+        },
+        "requested_artifacts": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "measurement_repetitions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "comparison_affinity": {
+          "enum": ["", "same-endpoint-environment-device"]
+        },
+        "expected_block_dims": {
+          "type": "object",
+          "propertyNames": {"pattern": "^[1-9][0-9]*$"},
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "requested_device_session_seconds": {
+      "type": "integer",
+      "minimum": 30,
+      "maximum": 240
+    },
+    "retry_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_execution_attempts",
+        "max_device_stage_retries",
+        "transport_reuses_request_id"
+      ],
+      "properties": {
+        "max_execution_attempts": {"const": 1},
+        "max_device_stage_retries": {"const": 0},
+        "transport_reuses_request_id": {"const": true}
+      }
+    },
+    "rationale": {"type": "string", "minLength": 1},
+    "created_at": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"operation_kind": {"const": "diagnostic-profile"}}
+      },
+      "then": {
+        "properties": {
+          "scope": {
+            "properties": {
+              "profiler_mode": {
+                "enum": ["primary-all-cases", "primary-roofline-all-cases"]
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "comparison_targets": {"maxItems": 0},
+          "scope": {
+            "properties": {
+              "profiler_mode": {"const": "none"},
+              "measurement_repetitions": {"const": 1},
+              "comparison_affinity": {"const": ""},
+              "expected_block_dims": {"maxProperties": 0},
+              "requested_artifacts": {
+                "items": {
+                  "enum": [
+                    "engine-identity",
+                    "runtime-readiness",
+                    "runtime-compatibility",
+                    "operator-install-precheck",
+                    "phase-timeline",
+                    "correctness-batch",
+                    "first-failure-traceback",
+                    "case-logs",
+                    "runtime-boundary-trace",
+                    "native-workspace-query-attribution",
+                    "kernel-fault-attribution"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
