@@ -9,13 +9,14 @@ WORKFLOW_ACTION_RECEIPT_SCHEMA = "ascendop.workflow-action-receipt.v1"
 BOARD_ACTION_SCHEMA = "ascendop.board-action.v1"
 SOLVER_DIAGNOSTIC_REQUEST_SCHEMA = "ascendop.solver-diagnostic-request.v1"
 SOLVER_BLOCKER_CONTRACT_REVISION = "solver-diagnostic-v3"
-SOLVER_DIAGNOSTIC_CAPABILITY_GENERATION = "solver-diagnostic-capabilities-v9"
+SOLVER_DIAGNOSTIC_CAPABILITY_GENERATION = "solver-diagnostic-capabilities-v10"
 SOLVER_DIAGNOSTIC_CAPABILITIES = (
     "all-case-correctness-replay",
     "staged-diagnostic-evidence",
     "consumed-version-runtime-boundary-replay",
     "runtime-boundary-trace",
     "native-workspace-query-attribution",
+    "host-callback-attribution",
     "kernel-fault-attribution",
     "same-endpoint-profile-comparison",
     "case-lifetime-rollover",
@@ -60,6 +61,7 @@ SOLVER_DIAGNOSTIC_CORRECTNESS_ARTIFACTS = (
     "case-logs",
     "runtime-boundary-trace",
     "native-workspace-query-attribution",
+    "host-callback-attribution",
     "kernel-fault-attribution",
 )
 

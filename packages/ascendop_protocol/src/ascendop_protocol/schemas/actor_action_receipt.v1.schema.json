@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.actor-action-receipt.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "action_id", "action_kind", "effective_role", "role_binding_id", "lease_id", "status", "result", "failure_class", "completed_at"],
+  "properties": {
+    "schema": {"const": "ascendop.actor-action-receipt.v1"},
+    "action_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "action_kind": {"enum": ["solver.iterate", "solver.repair", "tester.casegen", "tester.case-repair", "manager.flow-start", "manager.flow-pause", "manager.flow-resume", "manager.flow-stop", "manager.request-user-decision", "assistant.official-prepare", "assistant.official-submit", "assistant.official-poll", "assistant.official-import-result", "developer.repair-capability", "developer.publish-protocol"]},
+    "effective_role": {"enum": ["assistant", "developer", "manager", "solver", "tester"]},
+    "role_binding_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "lease_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "status": {"enum": ["completed", "failed", "rejected", "cancelled", "uncertain"]},
+    "result": {"type": "object"},
+    "failure_class": {"type": ["string", "null"]},
+    "completed_at": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {"if": {"properties": {"status": {"const": "completed"}}}, "then": {"properties": {"failure_class": {"type": "null"}}}},
+    {"if": {"properties": {"status": {"not": {"const": "completed"}}}}, "then": {"properties": {"failure_class": {"type": "string", "minLength": 1}}}}
+  ]
+}

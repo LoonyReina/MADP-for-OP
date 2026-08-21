@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.agent-turn-delivery.v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "delivery_id", "delivery_key", "adapter_id", "adapter_generation", "target_kind", "target_id", "workspace", "prompt", "prompt_digest", "action", "context", "action_context", "lease", "agent", "created_at"],
+  "properties": {
+    "schema": {"const": "ascendop.agent-turn-delivery.v2"},
+    "delivery_id": {"type": "string", "minLength": 1},
+    "delivery_key": {"type": "string", "minLength": 1},
+    "adapter_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "adapter_generation": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "target_kind": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "target_id": {"type": "string", "minLength": 1},
+    "workspace": {"type": "string", "minLength": 1},
+    "prompt": {"type": "string", "minLength": 1, "maxLength": 4194304},
+    "prompt_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "action": {"type": "object"},
+    "context": {"type": "object"},
+    "action_context": {"$ref": "agent_action_context.v3.schema.json"},
+    "lease": {"type": "object"},
+    "agent": {"type": "object"},
+    "created_at": {"type": "string", "minLength": 1}
+  }
+}

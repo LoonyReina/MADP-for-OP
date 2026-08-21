@@ -7,7 +7,11 @@ from pathlib import Path
 import pytest
 
 from ascendop_control.application import ControlCommandWorker
-from ascendop_control.storage import CONTROL_EXTENSION_SQL, ControlStore
+from ascendop_control.storage import (
+    CONTROL_EXTENSION_SQL,
+    CONTROL_SCHEMA_VERSION,
+    ControlStore,
+)
 from ascendop_control.storage.errors import ControlRepositoryError
 from ascendop_protocol.agent import (
     AGENT_ACTION_RECEIPT_SCHEMA,
@@ -15,6 +19,12 @@ from ascendop_protocol.agent import (
     AGENT_CONTEXT_SNAPSHOT_SCHEMA,
     AGENT_POOL_SCHEMA,
     AGENT_REGISTRATION_SCHEMA,
+)
+from ascendop_protocol.evidence import (
+    EVIDENCE_OPERATION_REQUEST_SCHEMA,
+    EVIDENCE_OPERATION_RESULT_SCHEMA,
+    evidence_operation_registry,
+    evidence_operation_registry_digest,
 )
 
 
@@ -257,6 +267,31 @@ def test_legacy_protocol_output_validation_enters_central_retry_arbitration(
         lease_seconds=60,
     )
     assert retried["state"] == "queued"
+    repair_claim = store.claim_agent_action(
+        runner_id="runner", boot_id="repair-boot", lease_seconds=60
+    )
+    assert repair_claim is not None
+    assert repair_claim["attempt_context"] == {
+        "attempt_id": str(repair_claim["attempt_id"]),
+        "ordinal": 2,
+        "mode": "output_repair",
+        "history": [
+            {
+                "attempt_id": str(claim["attempt_id"]),
+                "ordinal": 1,
+                "state": "failed",
+                "failure_class": "agent-output-validation",
+                "validation_error": "created_at must be non-empty text",
+            }
+        ],
+        "output_repair": {
+            "prior_attempt_id": str(claim["attempt_id"]),
+            "prior_attempt_ordinal": 1,
+            "failure_class": "agent-output-validation",
+            "validation_error": "created_at must be non-empty text",
+            "remaining_correction_turns": 1,
+        },
+    }
 
 
 def test_global_pool_routes_without_operator_binding_and_filters_capabilities(
@@ -646,6 +681,85 @@ def test_control_command_is_idempotent_and_events_resume(tmp_path: Path) -> None
     assert store.control_events_after(events[-1]["sequence"]) == []
 
 
+def test_v5_role_bindings_authorize_one_effective_role_and_scope(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    registration = store.register_agent(
+        _registration("manager", "codex-cli"),
+        lease_seconds=60,
+    )
+    manager = _role_binding(
+        "manager",
+        str(registration["agent_id"]),
+        capabilities=["flow-control"],
+    )
+    assistant = _role_binding(
+        "assistant",
+        str(registration["agent_id"]),
+        capabilities=["official-platform"],
+        operator_ids=["hard-swish"],
+        workspace_roots=["operators_workspace/HardSwish"],
+    )
+    store.upsert_role_binding(manager)
+    store.upsert_role_binding(assistant)
+
+    assert {
+        row["role"] for row in store.role_bindings(native_session_id="shared-session")
+    } == {"manager", "assistant"}
+    action = _manager_action(manager)
+    assert store.authorize_actor_action(action)["effective_role"] == "manager"
+
+    with pytest.raises(ControlRepositoryError, match="exceeds role binding scope"):
+        store.authorize_actor_action(
+            {
+                **action,
+                "scope": {
+                    **action["scope"],
+                    "capabilities": ["flow-control", "user-interaction"],
+                },
+            }
+        )
+
+
+def test_manager_control_command_requires_authorized_immutable_action(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    registration = store.register_agent(
+        _registration("manager", "codex-cli"),
+        lease_seconds=60,
+    )
+    binding = _role_binding(
+        "manager",
+        str(registration["agent_id"]),
+        capabilities=["flow-control"],
+    )
+    store.upsert_role_binding(binding)
+    action = _manager_action(binding)
+    command = {
+        "schema": "ascendop.control-command.v1",
+        "command_id": "manager-command-1",
+        "idempotency_key": "manager-command-key-1",
+        "command_kind": "manager.flow-pause",
+        "actor_id": binding["principal_id"],
+        "required_capability": "operator",
+        "parameters": action["payload"],
+        "actor_action": action,
+        "created_at": "2026-08-17T00:00:00+00:00",
+    }
+    assert store.submit_control_command(command)["state"] == "queued"
+    with pytest.raises(ValueError, match="parameters must equal"):
+        store.submit_control_command(
+            {
+                **command,
+                "command_id": "manager-command-2",
+                "idempotency_key": "manager-command-key-2",
+                "parameters": {"flow_id": "ascendop", "reason": "changed"},
+            }
+        )
+
+
 def test_control_command_worker_records_one_terminal_receipt(tmp_path: Path) -> None:
     store = _store(tmp_path)
     command = _control_command("worker")
@@ -730,12 +844,194 @@ def test_runtime_service_retirement_is_boot_identity_fenced(tmp_path: Path) -> N
     assert row["live"] is False
 
 
+def test_evidence_operation_lifecycle_preserves_origin_and_route(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    action = _action("evidence")
+    store.create_agent_action(action, _snapshot("evidence"))
+    registry = evidence_operation_registry()
+    request = {
+        "schema": EVIDENCE_OPERATION_REQUEST_SCHEMA,
+        "operation_request_id": "eor-hard-swish-profile-1",
+        "idempotency_key": "evidence:action-evidence:profile.collect",
+        "registry_generation": registry["generation"],
+        "registry_digest": evidence_operation_registry_digest(),
+        "operation_code": "profile.collect",
+        "origin": {
+            "action_id": action["action_id"],
+            "iteration_id": action["iteration_id"],
+            "operator_id": action["operator_id"],
+            "role": action["role"],
+        },
+        "expected_consumer": "solver",
+        "parameters": {
+            "candidate_id": "candidate-evidence",
+            "test_version": action["candidate_version"],
+            "case_version": "case-v1",
+            "profiler_mode": "primary-all-cases",
+        },
+        "resume_condition": "profiler evidence is indexed",
+        "state": "queued",
+        "created_at": "2026-08-19T00:00:00+00:00",
+    }
+
+    created = store.create_evidence_operation_request(request)
+    duplicate = store.create_evidence_operation_request(request)
+    assert created["operation_request_id"] == duplicate["operation_request_id"]
+    assert created["origin_action_id"] == action["action_id"]
+    assert created["executor"] == "test-engine"
+
+    claim = store.claim_evidence_operation(
+        executor="test-engine",
+        consumer_id="diagnostic-intake",
+        lease_seconds=60,
+    )
+    assert claim is not None
+    assert claim["state"] == "claimed"
+    routed = store.route_evidence_operation(
+        operation_request_id=request["operation_request_id"],
+        claim_token=claim["claim"]["claim_token"],
+        test_request_id="test-request-1",
+        wire_attempt_id="wire-attempt-1",
+        endpoint_id="endpoint-1",
+        execution_environment_id="environment-1",
+    )
+    assert routed["state"] == "routed"
+    assert store.evidence_operation_for_test_request("test-request-1") == routed
+
+    result = {
+        "schema": EVIDENCE_OPERATION_RESULT_SCHEMA,
+        "operation_result_id": "eors-hard-swish-profile-1",
+        "operation_request_id": request["operation_request_id"],
+        "registry_generation": request["registry_generation"],
+        "registry_digest": request["registry_digest"],
+        "operation_code": request["operation_code"],
+        "origin": request["origin"],
+        "expected_consumer": request["expected_consumer"],
+        "status": "completed",
+        "execution": routed["route"],
+        "evidence": {
+            "evidence_type": "profiler-trace",
+            "artifact_refs": ["operators_testresult/HardSwish/profile.json"],
+            "payload": {"case_count": 4},
+        },
+        "summary": "profile collected",
+        "failure_class": None,
+        "completed_at": "2026-08-19T00:10:00+00:00",
+    }
+    assert store.complete_evidence_operation(result) == result
+    assert store.complete_evidence_operation(result) == result
+    assert store.evidence_operation_result(request["operation_request_id"]) == result
+    origin = store.evidence_operations_for_origin(action_id=str(action["action_id"]))
+    assert [item["state"] for item in origin] == ["completed"]
+
+
+def test_evidence_operation_rejects_changed_origin_and_idempotency(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    action = _action("evidence-collision")
+    store.create_agent_action(action, _snapshot("evidence-collision"))
+    registry = evidence_operation_registry()
+    request = {
+        "schema": EVIDENCE_OPERATION_REQUEST_SCHEMA,
+        "operation_request_id": "eor-collision",
+        "idempotency_key": "evidence:collision",
+        "registry_generation": registry["generation"],
+        "registry_digest": evidence_operation_registry_digest(),
+        "operation_code": "environment.conformance",
+        "origin": {
+            "action_id": action["action_id"],
+            "iteration_id": action["iteration_id"],
+            "operator_id": action["operator_id"],
+            "role": action["role"],
+        },
+        "expected_consumer": "solver",
+        "parameters": {
+            "endpoint_id": "endpoint-1",
+            "execution_environment_id": "environment-1",
+            "requirements_generation": "requirements-1",
+        },
+        "resume_condition": "environment conforms",
+        "state": "queued",
+        "created_at": "2026-08-19T00:00:00+00:00",
+    }
+    store.create_evidence_operation_request(request)
+    changed = {**request, "operation_request_id": "eor-collision-other"}
+    changed["parameters"] = {**request["parameters"], "endpoint_id": "endpoint-2"}
+    with pytest.raises(ControlRepositoryError, match="idempotency collision"):
+        store.create_evidence_operation_request(changed)
+    wrong_origin = {**request, "idempotency_key": "evidence:wrong-origin"}
+    wrong_origin["operation_request_id"] = "eor-wrong-origin"
+    wrong_origin["origin"] = {**request["origin"], "iteration_id": "other"}
+    with pytest.raises(ControlRepositoryError, match="origin identity mismatch"):
+        store.create_evidence_operation_request(wrong_origin)
+
+
+def test_evidence_operation_defer_requeues_the_same_identity(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    action = _action("evidence-defer")
+    store.create_agent_action(action, _snapshot("evidence-defer"))
+    registry = evidence_operation_registry()
+    request = {
+        "schema": EVIDENCE_OPERATION_REQUEST_SCHEMA,
+        "operation_request_id": "eor-defer",
+        "idempotency_key": "evidence:defer",
+        "registry_generation": registry["generation"],
+        "registry_digest": evidence_operation_registry_digest(),
+        "operation_code": "environment.conformance",
+        "origin": {
+            "action_id": action["action_id"],
+            "iteration_id": action["iteration_id"],
+            "operator_id": action["operator_id"],
+            "role": action["role"],
+        },
+        "expected_consumer": "solver",
+        "parameters": {
+            "endpoint_id": "endpoint-1",
+            "execution_environment_id": "environment-1",
+            "requirements_generation": "requirements-1",
+        },
+        "resume_condition": "environment conforms",
+        "state": "queued",
+        "created_at": "2026-08-19T00:00:00+00:00",
+    }
+    store.create_evidence_operation_request(request)
+    first = store.claim_evidence_operation(
+        executor="endpoint-registry",
+        consumer_id="evidence-intake",
+        lease_seconds=60,
+    )
+    assert first is not None
+
+    deferred = store.defer_evidence_operation(
+        operation_request_id="eor-defer",
+        claim_token=first["claim"]["claim_token"],
+        delay_seconds=0,
+        failure_class="endpoint-unavailable",
+    )
+    assert deferred["state"] == "claimed"
+    assert deferred["claim"]["claim_token"] == ""
+
+    second = store.claim_evidence_operation(
+        executor="endpoint-registry",
+        consumer_id="evidence-intake",
+        lease_seconds=60,
+    )
+    assert second is not None
+    assert second["operation_request_id"] == "eor-defer"
+    assert second["claim"]["attempts"] == 2
+
+
 def _store(tmp_path: Path) -> ControlStore:
     path = tmp_path / "control.sqlite3"
     conn = sqlite3.connect(path)
     conn.executescript(
         "CREATE TABLE metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);"
-        "INSERT INTO metadata(key,value) VALUES('schema_version','12');"
+        f"INSERT INTO metadata(key,value) VALUES('schema_version','{CONTROL_SCHEMA_VERSION}');"
         "CREATE TABLE control_events(sequence INTEGER PRIMARY KEY AUTOINCREMENT,"
         "event_at TEXT NOT NULL,event_type TEXT NOT NULL,entity_type TEXT NOT NULL,"
         "entity_id TEXT NOT NULL,payload_json TEXT NOT NULL);"
@@ -796,6 +1092,67 @@ def _registration(name: str, driver: str) -> dict[str, object]:
             "structured_output": True,
         },
         "observed_at": "2026-08-08T00:00:00+00:00",
+    }
+
+
+def _role_binding(
+    role: str,
+    agent_id: str,
+    *,
+    capabilities: list[str],
+    operator_ids: list[str] | None = None,
+    workspace_roots: list[str] | None = None,
+) -> dict[str, object]:
+    return {
+        "schema": "ascendop.role-binding.v1",
+        "role_binding_id": f"binding-{role}-1",
+        "principal_id": "ascendop-system-assistant",
+        "agent_registration_id": agent_id,
+        "native_session_id": "shared-session",
+        "role": role,
+        "scope": {
+            "workspace_roots": workspace_roots or [],
+            "operator_ids": operator_ids or [],
+            "capabilities": capabilities,
+        },
+        "generation": "binding-generation-1",
+        "state": "active",
+        "valid_from": "2020-01-01T00:00:00+00:00",
+        "valid_until": "2099-01-01T00:00:00+00:00",
+    }
+
+
+def _manager_action(binding: dict[str, object]) -> dict[str, object]:
+    return {
+        "schema": "ascendop.actor-action-envelope.v1",
+        "action_id": "manager-action-1",
+        "idempotency_key": "manager.flow-pause:ascendop:1",
+        "action_kind": "manager.flow-pause",
+        "effective_role": "manager",
+        "principal_id": binding["principal_id"],
+        "role_binding_id": binding["role_binding_id"],
+        "producer_generation": "flow-v5-catalog-v2",
+        "scope": {
+            "workspace_roots": [],
+            "operator_ids": [],
+            "capabilities": ["flow-control"],
+        },
+        "lease": {
+            "lease_id": "manager-lease-1",
+            "generation": "manager-lease-generation-1",
+            "expires_at": "2099-01-01T00:00:00+00:00",
+        },
+        "causation": {
+            "trace_id": "trace-manager-1",
+            "correlation_id": "flow-ascendop",
+            "parent_action_id": None,
+            "candidate_id": None,
+            "promotion_receipt_id": None,
+            "request_id": None,
+            "attempt_id": None,
+        },
+        "payload": {"flow_id": "ascendop", "reason": "test pause"},
+        "created_at": "2026-08-17T00:00:00+00:00",
     }
 
 

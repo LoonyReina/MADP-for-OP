@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 
+CONTROL_SCHEMA_VERSION = 14
+
+
 CONTROL_EXTENSION_SQL = """
 CREATE TABLE IF NOT EXISTS service_heartbeats (
     service_id TEXT PRIMARY KEY,
@@ -84,6 +87,30 @@ CREATE TABLE IF NOT EXISTS agent_role_bindings_v4 (
 
 CREATE INDEX IF NOT EXISTS idx_agent_role_bindings_v4_selection
     ON agent_role_bindings_v4(operator_id, role, enabled, priority, last_selected_at);
+
+CREATE TABLE IF NOT EXISTS role_bindings_v5 (
+    role_binding_id TEXT PRIMARY KEY,
+    principal_id TEXT NOT NULL,
+    agent_registration_id TEXT NOT NULL,
+    native_session_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    generation TEXT NOT NULL,
+    state TEXT NOT NULL,
+    valid_from TEXT NOT NULL,
+    valid_until TEXT NOT NULL DEFAULT '',
+    scope_json TEXT NOT NULL,
+    binding_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(agent_registration_id) REFERENCES agent_registrations_v4(agent_id)
+        ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS idx_role_bindings_v5_session
+    ON role_bindings_v5(native_session_id, role, state);
+
+CREATE INDEX IF NOT EXISTS idx_role_bindings_v5_principal
+    ON role_bindings_v5(principal_id, role, state);
 
 CREATE TABLE IF NOT EXISTS agent_iterations_v4 (
     iteration_id TEXT PRIMARY KEY,
@@ -198,6 +225,61 @@ CREATE TABLE IF NOT EXISTS agent_action_receipts_v4 (
     completed_at TEXT NOT NULL,
     FOREIGN KEY(action_id) REFERENCES agent_actions_v4(action_id)
 );
+
+CREATE TABLE IF NOT EXISTS evidence_operation_requests_v5 (
+    operation_request_id TEXT PRIMARY KEY,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    registry_generation TEXT NOT NULL,
+    registry_digest TEXT NOT NULL,
+    operation_code TEXT NOT NULL,
+    origin_action_id TEXT NOT NULL,
+    origin_iteration_id TEXT NOT NULL,
+    operator_id TEXT NOT NULL,
+    origin_role TEXT NOT NULL,
+    expected_consumer TEXT NOT NULL,
+    state TEXT NOT NULL,
+    executor TEXT NOT NULL,
+    resource_class TEXT NOT NULL,
+    request_json TEXT NOT NULL,
+    test_request_id TEXT NOT NULL DEFAULT '',
+    wire_attempt_id TEXT NOT NULL DEFAULT '',
+    endpoint_id TEXT NOT NULL DEFAULT '',
+    execution_environment_id TEXT NOT NULL DEFAULT '',
+    claimed_by TEXT NOT NULL DEFAULT '',
+    claim_token TEXT NOT NULL DEFAULT '',
+    claim_expires_at TEXT NOT NULL DEFAULT '',
+    claim_attempts INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(origin_action_id) REFERENCES agent_actions_v4(action_id),
+    FOREIGN KEY(origin_iteration_id) REFERENCES agent_iterations_v4(iteration_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_evidence_operation_requests_v5_claim
+    ON evidence_operation_requests_v5(executor, state, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_evidence_operation_requests_v5_origin
+    ON evidence_operation_requests_v5(
+        operator_id, origin_iteration_id, origin_action_id, created_at
+    );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_evidence_operation_requests_v5_test_request
+    ON evidence_operation_requests_v5(test_request_id)
+    WHERE test_request_id != '';
+
+CREATE TABLE IF NOT EXISTS evidence_operation_results_v5 (
+    operation_result_id TEXT PRIMARY KEY,
+    operation_request_id TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL,
+    expected_consumer TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    completed_at TEXT NOT NULL,
+    FOREIGN KEY(operation_request_id)
+        REFERENCES evidence_operation_requests_v5(operation_request_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_evidence_operation_results_v5_consumer
+    ON evidence_operation_results_v5(expected_consumer, completed_at);
 
 CREATE TABLE IF NOT EXISTS agent_questions_v4 (
     question_id TEXT PRIMARY KEY,

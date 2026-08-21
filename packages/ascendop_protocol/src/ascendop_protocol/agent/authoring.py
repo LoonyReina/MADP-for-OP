@@ -13,8 +13,13 @@ from ..workflow.contracts import (
 from .contracts import validate_agent_output_contract
 
 
+AGENT_OUTPUT_AUTHORING_REVISION = "ascendop.agent-output-authoring.v2"
+
+
 def render_agent_output_authoring_contract(
     raw_contracts: Iterable[Mapping[str, Any]],
+    *,
+    candidate_version: str = "",
 ) -> str:
     """Render exact authoring requirements from typed Agent output contracts."""
 
@@ -27,6 +32,7 @@ def render_agent_output_authoring_contract(
 
     sections = [
         "AGENT OUTPUT AUTHORING CONTRACT (derived from immutable output_contracts):",
+        f"Revision: {AGENT_OUTPUT_AUTHORING_REVISION}",
         "Only write a declared isolated_path. Required literals are protocol fields, "
         "not prose suggestions.",
     ]
@@ -91,7 +97,7 @@ def render_agent_output_authoring_contract(
                 "artifact bundles are automatically staged in the next Solver action's "
                 ".ascendop-evidence manifest. Missing internal diagnostic detail is "
                 "evidence-exhausted, which the daemon proactively routes to the "
-                "configured steward.\n"
+                "configured Developer as one exactly-once ActorActionEnvelope.\n"
                 "Registered diagnostic-correctness-replay returns all-case evidence, "
                 "including first-failure-traceback and case-logs. Registered "
                 "diagnostic-profile supports complete profile_call_plan attribution, "
@@ -103,6 +109,8 @@ def render_agent_output_authoring_contract(
                 "boundaries, or native-workspace-query-attribution for the ACLNN "
                 "workspace operation, native exception/backtrace, process-memory "
                 "snapshot, and allocation-request availability, or "
+                "host-callback-attribution for isolated-source tiling callback "
+                "enter/return/exception events with overlay attestation, or "
                 "kernel-fault-attribution for an mssanitizer memcheck log, fault PCs, "
                 "reported source locations/UB ranges, and source-indexed TPipe/TQue "
                 "InitBuffer plus vector-call declarations. It may target an "
@@ -176,15 +184,54 @@ def render_agent_output_authoring_contract(
                 )
             sections.append(instruction)
         elif kind == "solver-candidate-proposal":
+            reserved_candidate = str(
+                identity.get("candidate_version") or candidate_version
+            ).strip()
+            if candidate_version and reserved_candidate != candidate_version:
+                raise ValueError(
+                    "candidate proposal contract conflicts with action candidate_version"
+                )
+            if not reserved_candidate:
+                raise ValueError(
+                    "candidate proposal authoring requires an exact candidate_version"
+                )
+            proposal = {
+                "schema": "ascendop.solver-candidate-proposal.v1",
+                "campaign": str(identity.get("campaign") or ""),
+                "operator": str(identity.get("operator") or ""),
+                "candidate_version": reserved_candidate,
+                "case_version": str(identity.get("case_version") or ""),
+                "base_version": str(identity.get("base_version") or ""),
+                "source_before_digest": str(
+                    identity.get("source_before_digest") or ""
+                ),
+                "intent": "<non-empty intended measurable change>",
+                "observed_signal": "<non-empty observed evidence>",
+                "primary_hypothesis": "<non-empty primary hypothesis>",
+                "counter_hypothesis": "<non-empty counter-hypothesis>",
+                "router_gap": "<non-empty router-gap decision; use none when absent>",
+                "consulted_evidence": ["<exact inspected evidence path or evidence ID>"],
+                "optimization_method_decision": "<non-empty selected or skipped method>",
+                "skill_feedback": "<non-empty skill usefulness or gap assessment>",
+                "shared_knowledge_decision": "<non-empty promotion decision>",
+                "changed_source": ["<changed op_host/ or op_kernel/ relative path>"],
+                "risks": {
+                    "correctness": "<non-empty correctness risk>",
+                    "performance": "<non-empty performance risk>",
+                    "infrastructure": "<non-empty infrastructure risk>",
+                },
+                "hardware": "unknown",
+                "created_at": "<non-empty UTC RFC3339 timestamp>",
+            }
             sections.append(
                 "When this action leaves a testable source candidate, write one JSON "
-                "object satisfying ascendop.solver-candidate-proposal.v1. Any change "
-                "under op_host/ or op_kernel/ requires this output. Set "
-                "candidate_version to the exact FLOW V4 ACTION candidate_version and "
-                "preserve these immutable identity values:\n"
-                + json.dumps(identity, ensure_ascii=True, indent=2, sort_keys=True)
-                + "\nconsulted_evidence and changed_source must be non-empty arrays; "
-                "risks must contain correctness, performance, and infrastructure; "
+                "object with exactly the keys in the skeleton below. Any change under "
+                "op_host/ or op_kernel/ requires this output. Preserve the prefilled "
+                "identity values exactly, replace every angle-bracket placeholder with "
+                "concrete evidence, and do not add transport metadata such as "
+                "proposal_key or producer.\n"
+                + json.dumps(proposal, ensure_ascii=True, indent=2, sort_keys=False)
+                + "\nconsulted_evidence and changed_source must remain non-empty arrays; "
                 "hardware must be 910B2, 910B4, or unknown. The daemon, not the Agent, "
                 "creates TestUtils/pending."
             )

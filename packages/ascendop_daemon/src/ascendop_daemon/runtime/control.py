@@ -11,12 +11,22 @@ def stop_request_path(root: Path) -> Path:
     return root / "TestUtils" / "tester_daemon" / "daemon_stop.json"
 
 
-def write_stop_request(root: Path, reason: str = "") -> Path:
+def write_stop_request(
+    root: Path,
+    reason: str = "",
+    *,
+    mode: str = "stop",
+    action_id: str = "",
+) -> Path:
+    if mode not in {"pause", "stop"}:
+        raise ValueError(f"unsupported stop-fence mode: {mode}")
     path = stop_request_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "requested_at": utc_now_iso(),
         "reason": reason,
+        "mode": mode,
+        "action_id": action_id,
     }
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return path

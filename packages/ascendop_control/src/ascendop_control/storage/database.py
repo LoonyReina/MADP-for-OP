@@ -7,9 +7,10 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .repository import V4ControlRepository, _canonical_json, _utc_now
+from .schema import CONTROL_SCHEMA_VERSION
 
 
-EXPECTED_SCHEMA_VERSION = 12
+EXPECTED_SCHEMA_VERSION = CONTROL_SCHEMA_VERSION
 
 
 class ControlStore(V4ControlRepository):
@@ -94,6 +95,7 @@ class ControlStore(V4ControlRepository):
             "service_heartbeats": "service_id",
             "agent_registrations_v4": "agent_id",
             "agent_pools_v4": "pool_id",
+            "role_bindings_v5": "role_binding_id",
             "agent_actions_v4": "created_at DESC",
             "agent_work_leases_v4": "acquired_at DESC",
             "agent_iterations_v4": "created_at DESC",

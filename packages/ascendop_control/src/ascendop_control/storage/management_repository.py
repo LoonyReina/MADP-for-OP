@@ -11,13 +11,179 @@ from ascendop_protocol.management import (
     validate_control_command,
     validate_control_command_receipt,
 )
+from ascendop_protocol.actor import (
+    validate_actor_action_envelope,
+    validate_role_binding,
+)
 
 from .errors import ControlRepositoryError
 
 
 class ManagementRepository:
+    def upsert_role_binding(self, binding: Mapping[str, Any]) -> dict[str, Any]:
+        value = validate_role_binding(binding)
+        payload = _canonical_json(value)
+        now = _utc_now()
+        with self.transaction() as conn:
+            registration = conn.execute(
+                "SELECT agent_id FROM agent_registrations_v4 WHERE agent_id=?",
+                (value["agent_registration_id"],),
+            ).fetchone()
+            if registration is None:
+                raise ControlRepositoryError(
+                    "role binding references an unknown agent registration: "
+                    f"{value['agent_registration_id']}"
+                )
+            existing = conn.execute(
+                "SELECT principal_id, agent_registration_id, native_session_id, "
+                "role, created_at FROM role_bindings_v5 WHERE role_binding_id=?",
+                (value["role_binding_id"],),
+            ).fetchone()
+            if existing is not None:
+                immutable = (
+                    str(existing["principal_id"]),
+                    str(existing["agent_registration_id"]),
+                    str(existing["native_session_id"]),
+                    str(existing["role"]),
+                )
+                requested = (
+                    value["principal_id"],
+                    value["agent_registration_id"],
+                    value["native_session_id"],
+                    value["role"],
+                )
+                if immutable != requested:
+                    raise ControlRepositoryError(
+                        "role binding identity is immutable; create a new binding"
+                    )
+            created_at = str(existing["created_at"]) if existing else now
+            conn.execute(
+                """
+                INSERT INTO role_bindings_v5(
+                    role_binding_id, principal_id, agent_registration_id,
+                    native_session_id, role, generation, state, valid_from,
+                    valid_until, scope_json, binding_json, created_at, updated_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(role_binding_id) DO UPDATE SET
+                    generation=excluded.generation,
+                    state=excluded.state,
+                    valid_from=excluded.valid_from,
+                    valid_until=excluded.valid_until,
+                    scope_json=excluded.scope_json,
+                    binding_json=excluded.binding_json,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    value["role_binding_id"],
+                    value["principal_id"],
+                    value["agent_registration_id"],
+                    value["native_session_id"],
+                    value["role"],
+                    value["generation"],
+                    value["state"],
+                    value["valid_from"],
+                    value.get("valid_until") or "",
+                    _canonical_json(value["scope"]),
+                    payload,
+                    created_at,
+                    now,
+                ),
+            )
+            self._event(
+                conn,
+                "role-binding-observed",
+                "role-binding",
+                str(value["role_binding_id"]),
+                {
+                    "principal_id": value["principal_id"],
+                    "native_session_id": value["native_session_id"],
+                    "role": value["role"],
+                    "state": value["state"],
+                    "generation": value["generation"],
+                },
+            )
+        return self.role_binding(str(value["role_binding_id"]))
+
+    def role_binding(self, role_binding_id: str) -> dict[str, Any]:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT binding_json FROM role_bindings_v5 WHERE role_binding_id=?",
+                (role_binding_id,),
+            ).fetchone()
+        if row is None:
+            raise ControlRepositoryError(
+                f"role binding does not exist: {role_binding_id}"
+            )
+        return json.loads(str(row["binding_json"]))
+
+    def role_bindings(
+        self,
+        *,
+        principal_id: str | None = None,
+        native_session_id: str | None = None,
+        state: str | None = None,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        parameters: list[Any] = []
+        for column, value in (
+            ("principal_id", principal_id),
+            ("native_session_id", native_session_id),
+            ("state", state),
+        ):
+            if value is not None:
+                clauses.append(f"{column}=?")
+                parameters.append(value)
+        query = "SELECT binding_json FROM role_bindings_v5"
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY principal_id, role, role_binding_id"
+        with self.connection() as conn:
+            rows = conn.execute(query, tuple(parameters)).fetchall()
+        return [json.loads(str(row["binding_json"])) for row in rows]
+
+    def authorize_actor_action(self, action: Mapping[str, Any]) -> dict[str, Any]:
+        value = validate_actor_action_envelope(action)
+        now = datetime.now(timezone.utc)
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT binding_json FROM role_bindings_v5 WHERE role_binding_id=?",
+                (value["role_binding_id"],),
+            ).fetchone()
+            if row is None:
+                raise ControlRepositoryError("actor action role binding does not exist")
+            registration = conn.execute(
+                "SELECT health_state, lease_expires_at FROM agent_registrations_v4 "
+                "WHERE agent_id=?",
+                (json.loads(str(row["binding_json"]))["agent_registration_id"],),
+            ).fetchone()
+        binding = validate_role_binding(json.loads(str(row["binding_json"])))
+        if binding["state"] != "active":
+            raise ControlRepositoryError("actor action role binding is not active")
+        if value["principal_id"] != binding["principal_id"]:
+            raise ControlRepositoryError("actor action principal does not own role binding")
+        if value["effective_role"] != binding["role"]:
+            raise ControlRepositoryError("actor action role does not match role binding")
+        if _instant(binding["valid_from"], "role binding valid_from") > now:
+            raise ControlRepositoryError("actor action role binding is not yet valid")
+        valid_until = binding.get("valid_until")
+        if valid_until and _instant(valid_until, "role binding valid_until") <= now:
+            raise ControlRepositoryError("actor action role binding has expired")
+        if _instant(value["lease"]["expires_at"], "actor lease expires_at") <= now:
+            raise ControlRepositoryError("actor action lease has expired")
+        if registration is None:
+            raise ControlRepositoryError("actor registration does not exist")
+        if str(registration["health_state"]) != "ready":
+            raise ControlRepositoryError("actor registration is not ready")
+        if str(registration["lease_expires_at"]) <= now.isoformat():
+            raise ControlRepositoryError("actor registration lease has expired")
+        _authorize_scope(value["scope"], binding["scope"])
+        return dict(value)
+
     def submit_control_command(self, command: Mapping[str, Any]) -> dict[str, Any]:
         value = validate_control_command(command)
+        actor_action = value.get("actor_action")
+        if actor_action is not None:
+            self.authorize_actor_action(actor_action)
         payload = _canonical_json(value)
         now = _utc_now()
         with self.transaction() as conn:
@@ -201,6 +367,17 @@ class ManagementRepository:
     ) -> dict[str, Any]:
         return self.complete_control_command(receipt, claim_token=claim_token)
 
+    def control_command_receipt(self, command_id: str) -> dict[str, Any] | None:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT receipt_json FROM control_command_receipts_v4 "
+                "WHERE command_id=?",
+                (command_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return json.loads(str(row["receipt_json"]))
+
     def upsert_public_resource(
         self,
         *,
@@ -287,3 +464,24 @@ def _canonical_json(value: Any) -> str:
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _instant(value: Any, field: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ControlRepositoryError(f"{field} must be ISO-8601") from exc
+    if parsed.tzinfo is None:
+        raise ControlRepositoryError(f"{field} must include a timezone")
+    return parsed.astimezone(timezone.utc)
+
+
+def _authorize_scope(action_scope: Mapping[str, Any], binding_scope: Mapping[str, Any]) -> None:
+    for field in ("workspace_roots", "operator_ids", "capabilities"):
+        requested = set(action_scope[field])
+        granted = set(binding_scope[field])
+        if not requested.issubset(granted):
+            outside = ", ".join(sorted(requested - granted))
+            raise ControlRepositoryError(
+                f"actor action {field} exceeds role binding scope: {outside}"
+            )

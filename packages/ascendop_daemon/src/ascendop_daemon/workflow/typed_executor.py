@@ -480,7 +480,11 @@ def validate_action_postcondition(
             if satisfied
             else "workflow output promotion receipt is missing or inconsistent",
         }
-    if operation in {"collect-profiler-evidence", "register-solver-diagnostic"}:
+    if operation in {
+        "collect-profiler-evidence",
+        "register-solver-diagnostic",
+        "retry-solver-diagnostic",
+    }:
         from ascendop_daemon.workflow.solver_diagnostics import observe_request
 
         arguments = action.get("arguments", {})
@@ -524,11 +528,23 @@ def validate_action_postcondition(
             "complete",
             "completed",
         }
+        if operation == "retry-solver-diagnostic":
+            expected_attempt = int(options.get("expected_request_attempt") or 0)
+            satisfied = (
+                satisfied
+                and int(observation.get("request_attempt") or 0)
+                == expected_attempt
+                and bool(observation.get("retry_engine_generation"))
+            )
         return {
             "schema": "ascendop.workflow-action-postcondition.v1",
             "operation": operation,
             "satisfied": satisfied,
             "observed_status": status,
+            "request_attempt": int(observation.get("request_attempt") or 0),
+            "retry_engine_generation": str(
+                observation.get("retry_engine_generation") or ""
+            ),
             "error": "" if satisfied else str(observation.get("error") or status),
         }
     if operation == "reconcile-terminal-result":
@@ -663,7 +679,7 @@ def action_command(root: Path, arguments: dict[str, Any]) -> list[str]:
 def failure_class_for_operation(operation: str) -> str:
     if operation == "collect-profiler-evidence":
         return "profiler"
-    if operation == "register-solver-diagnostic":
+    if operation in {"register-solver-diagnostic", "retry-solver-diagnostic"}:
         return "protocol"
     if operation in {
         "agent-source-promote",

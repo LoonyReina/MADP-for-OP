@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ascendop-protocol"
-version = "4.5.0"
+version = "5.4.3"
 description = "Typed contracts for MADP multi-agent workflows"
 readme = "README.md"
 license = "Apache-2.0"

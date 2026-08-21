@@ -9,6 +9,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from ascendop_protocol.actor import (
+    ACTOR_ACTION_RECEIPT_SCHEMA,
+    validate_actor_action_envelope,
+    validate_actor_action_receipt,
+)
 from ascendop_protocol.automation import (
     ASSISTANT_ACTION_RECEIPT_SCHEMA,
     ASSISTANT_ACTION_REQUEST_SCHEMA,
@@ -37,18 +42,15 @@ from ascendop_daemon.storage.control_types import (
     BOOTSTRAP_CONTROL_PROBE_POLICY,
     OUTBOX_ACTIVE_STATES,
     OUTBOX_CLAIMABLE_STATES,
-    SCHEMA_VERSION,
     SYSTEM_EXPERIMENT_GENERATION,
     SYSTEM_EXPERIMENT_OPERATOR_ID,
     ControlDatabaseError,
 )
 from ascendop_daemon.storage.control_validation import (
     _ensure_column,
-    _format_timestamp,
     _is_bootstrap_control_probe,
     _node_report_is_newer,
     _normalized_node_lease,
-    _parse_timestamp,
     _require_transport_claim,
     _runtime_route_rejection_reasons,
     _validate_node_report,
@@ -67,6 +69,294 @@ class AutomationServiceRepository:
                 (action_id,),
             ).fetchone()
         return decode_assistant_action(row, idempotent=True) if row is not None else None
+
+    def create_actor_action_if_absent(
+        self,
+        action: dict[str, Any],
+        *,
+        target_id: str,
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        self.initialize()
+        value = self.authorize_actor_action(
+            validate_actor_action_envelope(action)
+        )
+        target = target_id.strip()
+        if not target:
+            raise ControlDatabaseError("Actor action target must not be empty")
+        binding = self.role_binding(str(value["role_binding_id"]))
+        if binding is None or binding["native_session_id"] != target:
+            raise ControlDatabaseError(
+                "Actor action target does not match its role binding session"
+            )
+        request_json = canonical_json(value)
+        now = utc_now()
+        with self.transaction() as conn:
+            existing = conn.execute(
+                "SELECT * FROM assistant_action_requests WHERE idempotency_key=?",
+                (str(value["idempotency_key"]),),
+            ).fetchone()
+            if existing is not None:
+                if str(existing["request_json"]) != request_json:
+                    raise ControlDatabaseError(
+                        "Actor action idempotency collision with different payload"
+                    )
+                return decode_assistant_action(existing, idempotent=True)
+            by_id = conn.execute(
+                "SELECT request_json FROM assistant_action_requests WHERE action_id=?",
+                (str(value["action_id"]),),
+            ).fetchone()
+            if by_id is not None:
+                raise ControlDatabaseError(
+                    "Actor action identity collision with different idempotency key"
+                )
+            conn.execute(
+                "INSERT INTO assistant_action_requests("
+                "action_id, idempotency_key, rule_id, assistant_target_id, "
+                "state, request_json, metrics_json, created_at, updated_at"
+                ") VALUES(?, ?, ?, ?, 'pending', ?, ?, ?, ?)",
+                (
+                    str(value["action_id"]),
+                    str(value["idempotency_key"]),
+                    str(value["action_kind"]),
+                    target,
+                    request_json,
+                    canonical_json(context or {}),
+                    now,
+                    now,
+                ),
+            )
+            self._event(
+                conn,
+                "actor-action-created",
+                "actor-action",
+                str(value["action_id"]),
+                {"action": value, "target_id": target},
+            )
+            row = conn.execute(
+                "SELECT * FROM assistant_action_requests WHERE action_id=?",
+                (str(value["action_id"]),),
+            ).fetchone()
+            assert row is not None
+            return decode_assistant_action(row, idempotent=False)
+
+    def claim_actor_actions(
+        self,
+        target_id: str,
+        *,
+        effective_role: str,
+        consumer_id: str,
+        max_items: int = 1,
+        lease_seconds: int = 90,
+    ) -> list[dict[str, Any]]:
+        self.initialize()
+        now_value = datetime.now(timezone.utc)
+        now = now_value.isoformat()
+        expires = (now_value + timedelta(seconds=max(1, lease_seconds))).isoformat()
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE assistant_action_requests SET state='pending', claimed_by='', "
+                "claim_token='', claim_expires_at='', updated_at=? "
+                "WHERE state='claimed' AND claim_expires_at<>'' AND claim_expires_at<=?",
+                (now, now),
+            )
+            rows = conn.execute(
+                "SELECT * FROM assistant_action_requests WHERE assistant_target_id=? "
+                "AND state='pending' ORDER BY created_at, action_id",
+                (target_id,),
+            ).fetchall()
+            candidates: list[tuple[sqlite3.Row, dict[str, Any]]] = []
+            for row in rows:
+                raw = json.loads(str(row["request_json"]))
+                if raw.get("schema") != "ascendop.actor-action-envelope.v1":
+                    continue
+                value = validate_actor_action_envelope(raw)
+                if value["effective_role"] != effective_role:
+                    continue
+                value = self.authorize_actor_action(value)
+                candidates.append((row, value))
+                if len(candidates) >= max(1, int(max_items)):
+                    break
+            claimed: list[dict[str, Any]] = []
+            for row, value in candidates:
+                binding = self.role_binding(str(value["role_binding_id"]))
+                if binding is None or binding["native_session_id"] != target_id:
+                    raise ControlDatabaseError(
+                        "Actor action target no longer matches its role binding"
+                    )
+                token = uuid.uuid4().hex
+                cursor = conn.execute(
+                    "UPDATE assistant_action_requests SET state='claimed', "
+                    "claimed_by=?, claim_token=?, claim_expires_at=?, updated_at=? "
+                    "WHERE action_id=? AND state='pending'",
+                    (consumer_id, token, expires, now, str(row["action_id"])),
+                )
+                if cursor.rowcount != 1:
+                    continue
+                current = conn.execute(
+                    "SELECT * FROM assistant_action_requests WHERE action_id=?",
+                    (str(row["action_id"]),),
+                ).fetchone()
+                assert current is not None
+                claimed.append(decode_assistant_action(current, idempotent=False))
+            return claimed
+
+    def record_actor_action_receipt(
+        self,
+        receipt: dict[str, Any],
+        *,
+        consumer_id: str,
+        claim_token: str,
+    ) -> dict[str, Any]:
+        self.initialize()
+        value = validate_actor_action_receipt(receipt)
+        action_id = str(value["action_id"])
+        now = utc_now()
+        with self.transaction() as conn:
+            action = conn.execute(
+                "SELECT * FROM assistant_action_requests WHERE action_id=?",
+                (action_id,),
+            ).fetchone()
+            if action is None:
+                raise ControlDatabaseError(f"unknown Actor action: {action_id}")
+            envelope = validate_actor_action_envelope(
+                json.loads(str(action["request_json"]))
+            )
+            expected = {
+                "action_id": envelope["action_id"],
+                "action_kind": envelope["action_kind"],
+                "effective_role": envelope["effective_role"],
+                "role_binding_id": envelope["role_binding_id"],
+                "lease_id": envelope["lease"]["lease_id"],
+            }
+            if any(value[field] != expected[field] for field in expected):
+                raise ControlDatabaseError(
+                    "Actor action receipt does not match its immutable action"
+                )
+            existing = conn.execute(
+                "SELECT * FROM assistant_action_receipts WHERE action_id=?",
+                (action_id,),
+            ).fetchone()
+            if existing is not None:
+                if str(existing["receipt_json"]) != canonical_json(value):
+                    raise ControlDatabaseError(
+                        f"Actor action receipt collision: {action_id}"
+                    )
+                return decode_assistant_receipt(existing, idempotent=True)
+            if (
+                str(action["state"]) != "claimed"
+                or str(action["claimed_by"]) != consumer_id
+                or str(action["claim_token"]) != claim_token
+            ):
+                raise ControlDatabaseError(f"Actor action claim is stale: {action_id}")
+            conn.execute(
+                "INSERT INTO assistant_action_receipts("
+                "action_id, status, receipt_json, completed_at"
+                ") VALUES(?, ?, ?, ?)",
+                (
+                    action_id,
+                    str(value["status"]),
+                    canonical_json(value),
+                    str(value["completed_at"]),
+                ),
+            )
+            conn.execute(
+                "UPDATE assistant_action_requests SET state=?, claimed_by='', "
+                "claim_token='', claim_expires_at='', updated_at=? WHERE action_id=?",
+                (str(value["status"]), now, action_id),
+            )
+            self._event(
+                conn,
+                "actor-action-receipted",
+                "actor-action",
+                action_id,
+                value,
+            )
+            row = conn.execute(
+                "SELECT * FROM assistant_action_receipts WHERE action_id=?",
+                (action_id,),
+            ).fetchone()
+            assert row is not None
+            return decode_assistant_receipt(row, idempotent=False)
+
+    def defer_actor_action_delivery(
+        self,
+        action_id: str,
+        *,
+        consumer_id: str,
+        claim_token: str,
+        error: str,
+        max_attempts: int = 5,
+    ) -> dict[str, Any]:
+        self.initialize()
+        error = error.strip() or "actor-delivery-failed"
+        max_attempts = max(1, int(max_attempts))
+        now = utc_now()
+        with self.transaction() as conn:
+            action = conn.execute(
+                "SELECT * FROM assistant_action_requests WHERE action_id=?",
+                (action_id,),
+            ).fetchone()
+            if action is None:
+                raise ControlDatabaseError(f"unknown Actor action: {action_id}")
+            envelope = validate_actor_action_envelope(
+                json.loads(str(action["request_json"]))
+            )
+            if (
+                str(action["state"]) != "claimed"
+                or str(action["claimed_by"]) != consumer_id
+                or str(action["claim_token"]) != claim_token
+            ):
+                raise ControlDatabaseError(f"Actor action claim is stale: {action_id}")
+            previous = conn.execute(
+                "SELECT COUNT(*) AS count FROM control_events "
+                "WHERE event_type='actor-action-delivery-deferred' "
+                "AND entity_type='actor-action' AND entity_id=?",
+                (action_id,),
+            ).fetchone()
+            attempt = int(previous["count"] if previous is not None else 0) + 1
+            terminal = attempt >= max_attempts
+            state = "failed" if terminal else "pending"
+            conn.execute(
+                "UPDATE assistant_action_requests SET state=?, claimed_by='', "
+                "claim_token='', claim_expires_at='', updated_at=? WHERE action_id=?",
+                (state, now, action_id),
+            )
+            details = {
+                "attempt": attempt,
+                "max_attempts": max_attempts,
+                "error": error,
+                "terminal": terminal,
+            }
+            self._event(
+                conn,
+                "actor-action-delivery-deferred",
+                "actor-action",
+                action_id,
+                details,
+            )
+            if terminal:
+                receipt = validate_actor_action_receipt(
+                    {
+                        "schema": ACTOR_ACTION_RECEIPT_SCHEMA,
+                        "action_id": action_id,
+                        "action_kind": envelope["action_kind"],
+                        "effective_role": envelope["effective_role"],
+                        "role_binding_id": envelope["role_binding_id"],
+                        "lease_id": envelope["lease"]["lease_id"],
+                        "status": "failed",
+                        "result": details,
+                        "failure_class": "adapter_execution",
+                        "completed_at": now,
+                    }
+                )
+                conn.execute(
+                    "INSERT INTO assistant_action_receipts("
+                    "action_id, status, receipt_json, completed_at"
+                    ") VALUES(?, 'failed', ?, ?)",
+                    (action_id, canonical_json(receipt), now),
+                )
+            return {"action_id": action_id, "state": state, **details}
 
     def create_assistant_action_if_triggered(
         self,
@@ -408,154 +698,3 @@ class AutomationServiceRepository:
                 "state": state,
                 **details,
             }
-
-    def record_service_heartbeat(
-        self,
-        *,
-        service_id: str,
-        role: str,
-        code_generation: str,
-        wire_version: int,
-        capabilities: list[str],
-        state: str,
-        boot_id: str,
-        lease_seconds: int = 30,
-        details: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        self.initialize()
-        if not all(
-            isinstance(value, str) and value.strip()
-            for value in (service_id, role, code_generation, state, boot_id)
-        ):
-            raise ControlDatabaseError("service heartbeat identity is incomplete")
-        if isinstance(wire_version, bool) or int(wire_version) != 3:
-            raise ControlDatabaseError("service heartbeat must advertise Wire V3")
-        normalized_capabilities = sorted(
-            {
-                value.strip()
-                for value in capabilities
-                if isinstance(value, str) and value.strip()
-            }
-        )
-        now_value = datetime.now(timezone.utc)
-        now = _format_timestamp(now_value)
-        lease_expires_at = _format_timestamp(
-            now_value + timedelta(seconds=max(1, int(lease_seconds)))
-        )
-        capabilities_json = canonical_json(normalized_capabilities)
-        details_json = canonical_json(details or {})
-        with self.transaction() as conn:
-            previous = conn.execute(
-                "SELECT role, code_generation, wire_version, database_schema, "
-                "capabilities_json, state, boot_id FROM service_heartbeats "
-                "WHERE service_id=?",
-                (service_id,),
-            ).fetchone()
-            conn.execute(
-                """
-                INSERT INTO service_heartbeats(
-                    service_id, role, code_generation, wire_version,
-                    database_schema, capabilities_json, state, boot_id,
-                    heartbeat_at, lease_expires_at, details_json, updated_at
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(service_id) DO UPDATE SET
-                    role=excluded.role,
-                    code_generation=excluded.code_generation,
-                    wire_version=excluded.wire_version,
-                    database_schema=excluded.database_schema,
-                    capabilities_json=excluded.capabilities_json,
-                    state=excluded.state,
-                    boot_id=excluded.boot_id,
-                    heartbeat_at=excluded.heartbeat_at,
-                    lease_expires_at=excluded.lease_expires_at,
-                    details_json=excluded.details_json,
-                    updated_at=excluded.updated_at
-                """,
-                (
-                    service_id,
-                    role,
-                    code_generation,
-                    3,
-                    SCHEMA_VERSION,
-                    capabilities_json,
-                    state,
-                    boot_id,
-                    now,
-                    lease_expires_at,
-                    details_json,
-                    now,
-                ),
-            )
-            identity = (
-                role,
-                code_generation,
-                3,
-                SCHEMA_VERSION,
-                capabilities_json,
-                state,
-                boot_id,
-            )
-            if previous is None or tuple(previous) != identity:
-                self._event(
-                    conn,
-                    "service-registration-changed",
-                    "service",
-                    service_id,
-                    {
-                        "role": role,
-                        "code_generation": code_generation,
-                        "wire_version": 3,
-                        "database_schema": SCHEMA_VERSION,
-                        "capabilities": normalized_capabilities,
-                        "state": state,
-                        "boot_id": boot_id,
-                    },
-                )
-        return {
-            "service_id": service_id,
-            "role": role,
-            "code_generation": code_generation,
-            "wire_version": 3,
-            "database_schema": SCHEMA_VERSION,
-            "capabilities": normalized_capabilities,
-            "state": state,
-            "boot_id": boot_id,
-            "heartbeat_at": now,
-            "lease_expires_at": lease_expires_at,
-            "details": details or {},
-            "live": state == "ready",
-        }
-
-    def service_health(self) -> list[dict[str, Any]]:
-        self.initialize()
-        now = datetime.now(timezone.utc)
-        with self.connection() as conn:
-            rows = conn.execute(
-                "SELECT * FROM service_heartbeats ORDER BY service_id"
-            ).fetchall()
-        result: list[dict[str, Any]] = []
-        for row in rows:
-            lease_expires_at = _parse_timestamp(
-                str(row["lease_expires_at"]),
-                "lease_expires_at",
-            )
-            result.append(
-                {
-                    "service_id": str(row["service_id"]),
-                    "role": str(row["role"]),
-                    "code_generation": str(row["code_generation"]),
-                    "wire_version": int(row["wire_version"]),
-                    "database_schema": int(row["database_schema"]),
-                    "capabilities": json.loads(row["capabilities_json"]),
-                    "state": str(row["state"]),
-                    "boot_id": str(row["boot_id"]),
-                    "heartbeat_at": str(row["heartbeat_at"]),
-                    "lease_expires_at": str(row["lease_expires_at"]),
-                    "details": json.loads(row["details_json"]),
-                    "live": (
-                        str(row["state"]) == "ready"
-                        and lease_expires_at >= now
-                    ),
-                }
-            )
-        return result

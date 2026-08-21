@@ -1,0 +1,21 @@
+{
+  "schema": "ascendop.agent-action-context.v2",
+  "context_id": "context-demo-1",
+  "action_id": "actor-action-demo-1",
+  "catalog_generation": "flow-v5-catalog-v4",
+  "catalog_digest": "93b48631d9e0bfeec65fdd882a31aa5e9afefc72f04ccd1e9a7bea4b27f86995",
+  "role": "solver",
+  "candidate": {"version": "Demo_V1_1", "source_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  "case": {"version": "case_v001"},
+  "comparable_result": {"path": "operators_testresult/Demo/Demo_V1_1/RESULT.md"},
+  "baseline": {"version": "Demo_V1_0", "comparison_rule": "same-case-same-environment"},
+  "evidence_index": {"paths": ["operators_testresult/Demo/Demo_V1_1/RESULT.md"]},
+  "hypotheses": [{"id": "hypothesis-1", "state": "open"}],
+  "environment": {"soc": "910B4", "cann": "9.0.0", "environment_id": "env-demo"},
+  "budget": {"remaining_actions": 4, "remaining_device_seconds": 1800},
+  "write_scope": ["op_host", "op_kernel"],
+  "allowed_outcomes": ["proposed_change", "no_change_with_evidence", "request_evidence", "blocked_external", "protocol_gap"],
+  "available_evidence_operations": ["test.correctness", "test.performance", "profile.collect", "profile.compare", "correctness.replay", "environment.conformance", "artifact.recover"],
+  "output_schemas": ["ascendop.agent-action-outcome.v1", "ascendop.solver-candidate-proposal.v1"],
+  "created_at": "2026-08-17T00:00:00Z"
+}

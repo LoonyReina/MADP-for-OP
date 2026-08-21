@@ -1,0 +1,68 @@
+{
+  "schema": "ascendop.flow-v5-catalog.v1",
+  "generation": "flow-v5-catalog-v4",
+  "evidence_operation_registry_generation": "flow-v5-evidence-operations-v1",
+  "evidence_operation_registry_digest": "4e757a33a1c2184a3f9ad7434203189e510ce7ab4fccfedf2b9e6496e2672c62",
+  "roles": ["assistant", "developer", "manager", "solver", "tester"],
+  "action_catalog": [
+    {"action_kind": "solver.iterate", "role": "solver", "required_capability": "operator-source-write"},
+    {"action_kind": "solver.repair", "role": "solver", "required_capability": "operator-source-write"},
+    {"action_kind": "tester.casegen", "role": "tester", "required_capability": "case-source-write"},
+    {"action_kind": "tester.case-repair", "role": "tester", "required_capability": "case-source-write"},
+    {"action_kind": "manager.flow-start", "role": "manager", "required_capability": "flow-control"},
+    {"action_kind": "manager.flow-pause", "role": "manager", "required_capability": "flow-control"},
+    {"action_kind": "manager.flow-resume", "role": "manager", "required_capability": "flow-control"},
+    {"action_kind": "manager.flow-stop", "role": "manager", "required_capability": "flow-control"},
+    {"action_kind": "manager.request-user-decision", "role": "manager", "required_capability": "user-interaction"},
+    {"action_kind": "manager.review-notification", "role": "manager", "required_capability": "user-interaction"},
+    {"action_kind": "assistant.official-prepare", "role": "assistant", "required_capability": "official-platform"},
+    {"action_kind": "assistant.official-submit", "role": "assistant", "required_capability": "official-platform"},
+    {"action_kind": "assistant.official-poll", "role": "assistant", "required_capability": "official-platform"},
+    {"action_kind": "assistant.official-import-result", "role": "assistant", "required_capability": "official-platform"},
+    {"action_kind": "developer.repair-capability", "role": "developer", "required_capability": "framework-write"},
+    {"action_kind": "developer.publish-protocol", "role": "developer", "required_capability": "protocol-publish"}
+  ],
+  "evidence_operations": [
+    {"operation_code": "test.correctness", "owner": "daemon-harness", "resource_class": "device", "expected_consumers": ["solver", "tester"]},
+    {"operation_code": "test.performance", "owner": "daemon-harness", "resource_class": "device", "expected_consumers": ["solver"]},
+    {"operation_code": "profile.collect", "owner": "daemon-harness", "resource_class": "device", "expected_consumers": ["solver"]},
+    {"operation_code": "profile.compare", "owner": "daemon-harness", "resource_class": "local", "expected_consumers": ["solver"]},
+    {"operation_code": "correctness.replay", "owner": "daemon-harness", "resource_class": "device", "expected_consumers": ["solver", "tester"]},
+    {"operation_code": "environment.conformance", "owner": "daemon-harness", "resource_class": "endpoint", "expected_consumers": ["manager", "solver"]},
+    {"operation_code": "artifact.recover", "owner": "daemon-harness", "resource_class": "transport", "expected_consumers": ["solver", "tester"]}
+  ],
+  "outcomes": [
+    "proposed_change",
+    "no_change_with_evidence",
+    "request_evidence",
+    "blocked_external",
+    "protocol_gap"
+  ],
+  "blocker_kinds": [
+    "capability_gap",
+    "external_dependency",
+    "user_policy_decision"
+  ],
+  "native_terminal_statuses": [
+    "completed",
+    "failed",
+    "cancelled",
+    "interrupted",
+    "uncertain"
+  ],
+  "execution_statuses": ["completed", "failed", "cancelled", "uncertain"],
+  "failure_classes": [
+    "protocol_violation",
+    "adapter_execution",
+    "authentication",
+    "cancelled",
+    "uncertain_delivery"
+  ],
+  "output_kinds": [
+    "source-change",
+    "pending-evidence-repair",
+    "solver-blocker",
+    "solver-candidate-proposal",
+    "solver-diagnostic-request"
+  ]
+}

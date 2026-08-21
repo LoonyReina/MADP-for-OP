@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.workflow-trace-projection.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "trace_id", "operator_id", "nodes", "links", "gaps", "observed_at", "last_event_sequence", "freshness"],
+  "properties": {
+    "schema": {"const": "ascendop.workflow-trace-projection.v1"},
+    "trace_id": {"type": "string", "minLength": 1},
+    "operator_id": {"type": "string", "minLength": 1},
+    "nodes": {"type": "array", "items": {"type": "object", "additionalProperties": true, "required": ["kind", "id", "state", "observed_at"], "properties": {"kind": {"type": "string", "minLength": 1}, "id": {"type": "string", "minLength": 1}, "state": {"type": "string", "minLength": 1}, "observed_at": {"type": "string", "minLength": 1}}}},
+    "links": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["from", "to", "relation"], "properties": {"from": {"type": "string", "minLength": 1}, "to": {"type": "string", "minLength": 1}, "relation": {"type": "string", "minLength": 1}}}},
+    "gaps": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "observed_at": {"type": "string", "minLength": 1},
+    "last_event_sequence": {"type": "integer", "minimum": 0},
+    "freshness": {"type": "object", "additionalProperties": false, "required": ["state", "age_seconds", "source_updated_at"], "properties": {"state": {"enum": ["fresh", "stale", "unknown"]}, "age_seconds": {"type": "integer", "minimum": 0}, "source_updated_at": {"type": "string", "minLength": 1}}}
+  }
+}

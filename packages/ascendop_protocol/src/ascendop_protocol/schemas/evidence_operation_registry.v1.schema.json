@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.evidence-operation-registry.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "generation", "operations"],
+  "properties": {
+    "schema": {"const": "ascendop.evidence-operation-registry.v1"},
+    "generation": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "operations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/operation"}
+    }
+  },
+  "$defs": {
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation_code",
+        "input_schema_ref",
+        "output_schema_ref",
+        "executor",
+        "resource_class",
+        "timeout_policy",
+        "retry_policy",
+        "idempotency_policy",
+        "endpoint_requirements",
+        "environment_requirements",
+        "produced_evidence_types",
+        "expected_consumers",
+        "resume_condition"
+      ],
+      "properties": {
+        "operation_code": {"type": "string", "pattern": "^[a-z]+[a-z0-9.-]+$"},
+        "input_schema_ref": {"type": "string", "pattern": "^ascendop\\.evidence-operation-request\\.v1#/\\$defs/[a-z_]+$"},
+        "output_schema_ref": {"type": "string", "pattern": "^ascendop\\.evidence-operation-result\\.v1#/\\$defs/[a-z_]+$"},
+        "executor": {"enum": ["test-engine", "evidence-index", "endpoint-registry", "postprocess-recovery"]},
+        "resource_class": {"enum": ["device", "endpoint", "local", "transport"]},
+        "timeout_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["timeout_seconds", "lease_seconds"],
+          "properties": {
+            "timeout_seconds": {"type": "integer", "minimum": 1},
+            "lease_seconds": {"type": "integer", "minimum": 1}
+          }
+        },
+        "retry_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["max_attempts", "backoff_seconds", "retryable_failure_classes"],
+          "properties": {
+            "max_attempts": {"type": "integer", "minimum": 1},
+            "backoff_seconds": {"type": "integer", "minimum": 0},
+            "retryable_failure_classes": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "idempotency_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["scope", "key_fields"],
+          "properties": {
+            "scope": {"enum": ["origin-action", "operator-iteration", "candidate-case", "artifact"]},
+            "key_fields": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "endpoint_requirements": {"$ref": "#/$defs/requirements"},
+        "environment_requirements": {"$ref": "#/$defs/requirements"},
+        "produced_evidence_types": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z]+[a-z0-9.-]+$"}
+        },
+        "expected_consumers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["assistant", "developer", "manager", "solver", "tester"]}
+        },
+        "resume_condition": {"type": "string", "minLength": 1}
+      }
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "capabilities"],
+      "properties": {
+        "required": {"type": "boolean"},
+        "capabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

@@ -5,11 +5,13 @@ from typing import Any
 from ascendop_protocol.management import PUBLIC_RESOURCE_SCHEMA
 
 from ascendop_control.storage.database import ControlStore
+from .workflow_projections import WorkflowProjectionService
 
 
 class PublicQueryService:
     def __init__(self, store: ControlStore) -> None:
         self.store = store
+        self.workflow_projection = WorkflowProjectionService(store)
 
     def system(self) -> dict[str, Any]:
         metadata = self.store.metadata()
@@ -46,6 +48,36 @@ class PublicQueryService:
         return _collection(
             "agent-pools",
             self.store.raw_rows("agent_pools_v4", order_by="pool_id"),
+        )
+
+    def role_bindings(self) -> dict[str, Any]:
+        return _collection(
+            "role-bindings",
+            self.store.raw_rows("role_bindings_v5", order_by="role_binding_id"),
+        )
+
+    def workflows(self) -> dict[str, Any]:
+        return _collection(
+            "workflows",
+            self.store.public_resources("workflow-lifecycle"),
+        )
+
+    def manager_notifications(self) -> dict[str, Any]:
+        return _collection(
+            "manager-notifications",
+            self.store.public_resources("manager-notification"),
+        )
+
+    def operator_workflows(self) -> dict[str, Any]:
+        return _collection(
+            "operator-workflows",
+            self.workflow_projection.operator_workflows(),
+        )
+
+    def workflow_traces(self) -> dict[str, Any]:
+        return _collection(
+            "workflow-traces",
+            self.workflow_projection.workflow_traces(),
         )
 
     def agent_actions(self) -> dict[str, Any]:

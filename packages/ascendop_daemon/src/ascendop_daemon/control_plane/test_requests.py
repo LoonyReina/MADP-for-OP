@@ -1,18 +1,25 @@
 from __future__ import annotations
 
 import json
-import os
 import re
-import tempfile
-import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from ascendop_daemon.control_plane.control_database import ControlDatabase
 from ascendop_daemon.control_plane.device_budget_evidence import (
     DeviceBudgetEvidenceError,
     decide_device_budget,
     decide_profiler_device_budget,
+)
+from ascendop_daemon.control_plane.test_request_persistence import (
+    TestRequestError,
+    ensure_bounded,
+    persist_test_request,
+    pinned_endpoint_requirements,
+    reject_symlinks,
+    relative_path,
+    resolve_manifest_submit_root,
+    safe_token,
 )
 from ascendop_daemon.workflow.engine_candidates import (
     discover_control_plane_submit_candidates,
@@ -25,21 +32,18 @@ from ascendop_daemon.workflow.operator_job_builder import (
 from ascendop_daemon.core.models import DaemonConfig
 from ascendop_daemon.registry.system_registry import SystemRegistry, canonical_digest
 from ascendop_daemon.registry.models import BackendEndpoint
-from ascendop_daemon.registry.topology_parser import string_list
 from ascendop_daemon.exchange.flow_v3_request_builder import (
     build_candidate_request,
     build_diagnostic_request,
 )
 from ascendop_daemon.runtime.locking import NamedProcessLock
 from ascendop_daemon.runtime.release_identity import source_generation
-from ascendop_daemon.workflow.task_execution_profile import ensure_task_execution_profile
+from ascendop_daemon.workflow.task_execution_profile import (
+    ensure_task_execution_profile,
+)
 
 
 TEST_REQUEST_SCHEMA = "ascendop.test-request.v1"
-
-
-class TestRequestError(RuntimeError):
-    pass
 
 
 def generate_test_requests(
@@ -69,9 +73,7 @@ def generate_test_requests(
     if operator:
         candidates = [row for row in candidates if row["op"] == operator]
     if test_version:
-        candidates = [
-            row for row in candidates if row["test_version"] == test_version
-        ]
+        candidates = [row for row in candidates if row["test_version"] == test_version]
     if limit > 0:
         candidates = candidates[:limit]
     rows: list[dict[str, Any]] = []
@@ -122,11 +124,13 @@ def _generate_test_request_candidate(
     code_generation: str,
 ) -> tuple[dict[str, Any], list[dict[str, str]]]:
     registration = database.operator_for_display_name(candidate["op"])
+    lineage = candidate_workflow_lineage(database, candidate)
     manifest = build_test_request_manifest(
         root,
         candidate,
         registration,
         execution_profile=execution_profile,
+        lineage=lineage,
     )
     manifest_path, persisted = persist_test_request(request_root, manifest)
     record = database.create_test_request(persisted, manifest_path)
@@ -232,13 +236,18 @@ def prepare_wire_v3_attempt(
         route_payload = current["payload"]
         profile = manifest.get("task_execution_profile", {})
         workflow = manifest.get("workflow", {})
+        operation_instance = (
+            dict(workflow.get("operation_instance") or {})
+            if isinstance(workflow, dict)
+            and isinstance(workflow.get("operation_instance"), dict)
+            else {}
+        )
         candidate = {
             "op": str(manifest.get("operator") or ""),
             "test_version": str(manifest.get("test_version") or ""),
             "command": str(manifest.get("trusted_submit_command") or ""),
-            "job_id_suffix": str(workflow.get("job_id_suffix") or "")
-            if isinstance(workflow, dict)
-            else "",
+            "attempt_index": int(operation_instance.get("ordinal", 1) or 1),
+            "job_id_suffix": str(operation_instance.get("job_id_suffix") or ""),
         }
         submit_root = resolve_manifest_submit_root(root, manifest)
         try:
@@ -254,6 +263,18 @@ def prepare_wire_v3_attempt(
                 "package_root": preparation_root,
                 "request_id_override": request_id,
                 "attempt_id_override": attempt_id,
+                "evidence_operation": (
+                    dict(workflow.get("evidence_operation") or {})
+                    if isinstance(workflow, dict)
+                    and isinstance(workflow.get("evidence_operation"), dict)
+                    else None
+                ),
+                "lineage": (
+                    dict(workflow.get("lineage") or {})
+                    if isinstance(workflow, dict)
+                    and isinstance(workflow.get("lineage"), dict)
+                    else None
+                ),
             }
             if operation_kind == "diagnostic-profile":
                 envelope, envelope_path = build_diagnostic_request(
@@ -404,15 +425,17 @@ def build_test_request_manifest(
     profiler_plan: dict[str, Any] | None = None,
     diagnostic_plan: dict[str, Any] | None = None,
     requested_device_session_seconds: int | None = None,
+    required_node_session_id: str = "",
+    required_capability_generation: str = "",
+    evidence_operation: dict[str, Any] | None = None,
+    lineage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     root = root.resolve()
     op = candidate["op"]
     test_version = candidate["test_version"]
     parsed = parse_submit_command(candidate["command"])
     if parsed["op"] != op or parsed["test_version"] != test_version:
-        raise TestRequestError(
-            f"candidate command mismatch: {op}/{test_version}"
-        )
+        raise TestRequestError(f"candidate command mismatch: {op}/{test_version}")
     submit_root = (
         submit_root_override.resolve()
         if submit_root_override is not None
@@ -444,6 +467,14 @@ def build_test_request_manifest(
         if not allowed:
             raise TestRequestError("request endpoint filter cannot be empty")
         requirements["allowed_endpoints"] = allowed
+    if bool(required_node_session_id) != bool(required_capability_generation):
+        raise TestRequestError(
+            "runtime route affinity requires both node session and "
+            "capability generation"
+        )
+    if required_node_session_id:
+        requirements["node_session_id"] = str(required_node_session_id)
+        requirements["capability_generation"] = str(required_capability_generation)
     if operation_kind not in {
         "operator-test",
         "diagnostic-profile",
@@ -460,13 +491,30 @@ def build_test_request_manifest(
         raise TestRequestError(
             "diagnostic-correctness-replay requires a diagnostic plan"
         )
-    if (
-        operation_kind == "diagnostic-correctness-replay"
-        and profiler_mode not in {"", "none"}
-    ):
+    if operation_kind == "diagnostic-correctness-replay" and profiler_mode not in {
+        "",
+        "none",
+    }:
         raise TestRequestError(
             "diagnostic-correctness-replay profiler mode must be none"
         )
+    diagnostic_operation_instance: dict[str, Any] = {}
+    if operation_kind in {
+        "diagnostic-profile",
+        "diagnostic-correctness-replay",
+    }:
+        operation_ordinal = int(candidate.get("attempt_index", 1) or 1)
+        if operation_ordinal <= 0:
+            raise TestRequestError(
+                "diagnostic operation instance ordinal must be positive"
+            )
+        job_id_suffix = str(candidate.get("job_id_suffix") or "").strip()
+        if not job_id_suffix:
+            job_id_suffix = f"{operation_kind}-a{operation_ordinal:02d}"
+        diagnostic_operation_instance = {
+            "ordinal": operation_ordinal,
+            "job_id_suffix": job_id_suffix,
+        }
     effective_profiler_plan: dict[str, Any] = {}
     if operation_kind == "diagnostic-profile":
         effective_profiler_plan = dict(profiler_plan or {})
@@ -483,8 +531,7 @@ def build_test_request_manifest(
         if not isinstance(definition, dict):
             definition = {}
         profiler_kernel_name = str(
-            definition.get("profiler_kernel_name")
-            or task_profile.runtime_operator_name
+            definition.get("profiler_kernel_name") or task_profile.runtime_operator_name
         ).strip()
         if not re.fullmatch(r"[A-Za-z0-9_.-]+", profiler_kernel_name):
             raise TestRequestError(
@@ -496,12 +543,9 @@ def build_test_request_manifest(
         ).strip()
         if profiler_kernel_selection not in {"exact", "prefix-postfilter"}:
             raise TestRequestError(
-                "unsupported profiler kernel selection: "
-                f"{profiler_kernel_selection}"
+                f"unsupported profiler kernel selection: {profiler_kernel_selection}"
             )
-        effective_profiler_plan["profiler_kernel_selection"] = (
-            profiler_kernel_selection
-        )
+        effective_profiler_plan["profiler_kernel_selection"] = profiler_kernel_selection
     effective_requested_device_seconds = (
         int(requested_device_session_seconds)
         if requested_device_session_seconds is not None
@@ -509,7 +553,8 @@ def build_test_request_manifest(
     )
     effective_budget_class = (
         "diagnostic"
-        if operation_kind in {
+        if operation_kind
+        in {
             "diagnostic-profile",
             "diagnostic-correctness-replay",
         }
@@ -564,17 +609,11 @@ def build_test_request_manifest(
             "path": relative_path(root, profile_path),
             "sha256": canonical_digest(profile_document),
             "route_mode": "pinned" if pinned_endpoint else task_profile.route_mode,
-            **(
-                {"endpoint_id": pinned_endpoint.endpoint_id}
-                if pinned_endpoint
-                else {}
-            ),
+            **({"endpoint_id": pinned_endpoint.endpoint_id} if pinned_endpoint else {}),
             "requested_budget_class": effective_budget_class,
             "requested_budget_seconds": effective_requested_device_seconds,
             "budget_class": budget_decision.effective_class,
-            "requested_device_session_seconds": (
-                budget_decision.effective_seconds
-            ),
+            "requested_device_session_seconds": (budget_decision.effective_seconds),
             "budget_policy_decision": budget_decision.to_dict(),
             **(
                 {"budget_gate_evidence": budget_decision.approved_gate_evidence}
@@ -591,6 +630,17 @@ def build_test_request_manifest(
             "workflow_ingest": True,
             "publish_eligible": bool(publish_eligible),
             "operation_kind": operation_kind,
+            **(
+                {"operation_instance": diagnostic_operation_instance}
+                if diagnostic_operation_instance
+                else {}
+            ),
+            **({"lineage": dict(lineage)} if lineage else {}),
+            **(
+                {"evidence_operation": dict(evidence_operation)}
+                if evidence_operation is not None
+                else {}
+            ),
             **(
                 {
                     "profiler_mode": profiler_mode,
@@ -637,187 +687,39 @@ def build_test_request_manifest(
     }
 
 
-def pinned_endpoint_requirements(
-    requirements: dict[str, Any],
-    endpoint: BackendEndpoint,
-) -> dict[str, Any]:
-    """Bind environment identity while preserving task-level feature gates."""
+def candidate_workflow_lineage(
+    database: ControlDatabase,
+    candidate: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Resolve daemon-owned promotion causation for a candidate TestRequest."""
 
-    pinned = dict(requirements)
-    pinned.update(
-        {
-            "allowed_endpoints": [endpoint.endpoint_id],
-            "backend_pool": endpoint.backend_pool,
-            "transport": endpoint.transport,
-            "soc": string_list(endpoint.capabilities.get("soc")),
-            "cann": string_list(endpoint.capabilities.get("cann")),
-        }
-    )
-    operating_systems = string_list(
-        endpoint.capabilities.get("operating_systems")
-    )
-    if operating_systems:
-        pinned["operating_systems"] = operating_systems
-    return pinned
-
-
-def resolve_manifest_submit_root(root: Path, manifest: dict[str, Any]) -> Path:
-    sources = manifest.get("payload_sources", {})
-    identity = manifest.get("input_identity", {})
-    if not isinstance(sources, dict) or not isinstance(identity, dict):
-        raise TestRequestError("request payload source identity is malformed")
-    relative = str(sources.get("submit_root") or "")
-    if not relative:
-        raise TestRequestError("request payload submit_root is missing")
-    submit_root = (root / relative).resolve()
-    ensure_bounded(root, submit_root)
-    source = submit_root / "pending_snapshot" / "source_snapshot"
-    task_case = submit_root / "task_case"
-    attack_case = submit_root / "attack_case"
-    observed = {
-        "source_sha256": tree_digest(source) if source.is_dir() else "",
-        "task_case_sha256": tree_digest(task_case) if task_case.is_dir() else "",
-        "attack_case_sha256": (
-            tree_digest(attack_case) if attack_case.is_dir() else ""
-        ),
+    operator = str(candidate.get("op") or "")
+    test_version = str(candidate.get("test_version") or "")
+    with database.connection() as conn:
+        row = conn.execute(
+            "SELECT action_id, action_json FROM workflow_actions "
+            "WHERE operator_id=? AND test_version=? AND state='completed' "
+            "AND action_kind IN ('promote-agent-source','promote-agent-output') "
+            "ORDER BY completed_at DESC, action_id DESC LIMIT 1",
+            (operator, test_version),
+        ).fetchone()
+        if row is None:
+            return None
+        promotion = json.loads(str(row["action_json"]))
+        origin_action_id = str(promotion.get("parent_trace_id") or "")
+        agent = conn.execute(
+            "SELECT iteration_id FROM agent_actions_v4 WHERE action_id=?",
+            (origin_action_id,),
+        ).fetchone()
+        receipt = conn.execute(
+            "SELECT action_id FROM workflow_action_receipts WHERE action_id=?",
+            (str(row["action_id"]),),
+        ).fetchone()
+    return {
+        "trace_id": origin_action_id or str(row["action_id"]),
+        "origin_action_id": origin_action_id,
+        "origin_iteration_id": str(agent["iteration_id"]) if agent else "",
+        "promotion_action_id": str(row["action_id"]),
+        "promotion_receipt_id": str(receipt["action_id"]) if receipt else "",
+        "candidate_id": test_version,
     }
-    expected = {
-        key: str(identity.get(key) or "") for key in observed
-    }
-    if observed != expected:
-        raise TestRequestError(
-            "immutable request payload source changed before publication"
-        )
-    return submit_root
-
-
-def persist_test_request(
-    request_root: Path, manifest: dict[str, Any]
-) -> tuple[Path, dict[str, Any]]:
-    request_id = str(manifest["request_id"])
-    destination = request_root / request_id / "TEST_REQUEST.json"
-    if destination.is_file():
-        existing = read_persisted_test_request(destination)
-        validate_persisted_test_request(destination, existing, manifest)
-        return destination, existing
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    # Runtime timestamps belong to SQLite.  Keeping the file content purely
-    # content-addressed makes concurrent idempotent writers byte-identical.
-    persisted = dict(manifest)
-    payload = json.dumps(
-        persisted, ensure_ascii=True, indent=2, sort_keys=True
-    ) + "\n"
-    temporary_path = ""
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=destination.parent,
-            prefix=".TEST_REQUEST.",
-            suffix=".tmp",
-            delete=False,
-        ) as handle:
-            temporary_path = handle.name
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        try:
-            # Publishing a hard link exposes the fully closed temporary file
-            # atomically and lets exactly one immutable writer win.
-            os.link(temporary_path, destination)
-        except FileExistsError:
-            existing = read_persisted_test_request(destination)
-            validate_persisted_test_request(destination, existing, manifest)
-            return destination, existing
-        except OSError:
-            # Some filesystems do not support hard links. O_EXCL still elects
-            # one writer; concurrent readers wait for the complete JSON body.
-            try:
-                fd = os.open(
-                    destination,
-                    os.O_CREAT | os.O_EXCL | os.O_WRONLY,
-                )
-            except FileExistsError:
-                existing = read_persisted_test_request(destination)
-                validate_persisted_test_request(destination, existing, manifest)
-                return destination, existing
-            with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
-                handle.write(payload)
-                handle.flush()
-                os.fsync(handle.fileno())
-    finally:
-        if temporary_path:
-            Path(temporary_path).unlink(missing_ok=True)
-    return destination, persisted
-
-
-def read_persisted_test_request(
-    path: Path,
-    *,
-    timeout_seconds: float = 2.0,
-) -> dict[str, Any]:
-    deadline = time.monotonic() + max(0.0, timeout_seconds)
-    last_error: BaseException | None = None
-    while True:
-        try:
-            value = json.loads(path.read_text(encoding="utf-8-sig"))
-            if not isinstance(value, dict):
-                raise TestRequestError(
-                    f"persisted TestRequest is not an object: {path}"
-                )
-            return value
-        except TestRequestError:
-            raise
-        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-            last_error = exc
-            if time.monotonic() >= deadline:
-                raise TestRequestError(
-                    f"persisted TestRequest is not readable: {path}"
-                ) from last_error
-            time.sleep(0.01)
-
-
-def validate_persisted_test_request(
-    path: Path,
-    existing: dict[str, Any],
-    manifest: dict[str, Any],
-) -> None:
-    if (
-        existing.get("request_digest") != manifest.get("request_digest")
-        or canonical_without_created_at(existing)
-        != canonical_without_created_at(manifest)
-    ):
-        raise TestRequestError(f"immutable TestRequest path collision: {path}")
-
-
-def canonical_without_created_at(value: dict[str, Any]) -> str:
-    copied = dict(value)
-    copied.pop("created_at", None)
-    return json.dumps(
-        copied, ensure_ascii=True, sort_keys=True, separators=(",", ":")
-    )
-
-
-def reject_symlinks(root: Path) -> None:
-    if root.is_symlink():
-        raise TestRequestError(f"request payload cannot be a symlink: {root}")
-    for path in root.rglob("*"):
-        if path.is_symlink():
-            raise TestRequestError(f"request payload cannot contain symlinks: {path}")
-
-
-def ensure_bounded(root: Path, path: Path) -> None:
-    if path != root and root not in path.parents:
-        raise TestRequestError(f"request path escapes workspace: {path}")
-
-
-def relative_path(root: Path, path: Path) -> str:
-    ensure_bounded(root, path.resolve())
-    return path.resolve().relative_to(root).as_posix()
-
-
-def safe_token(value: str) -> str:
-    result = re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("._-").lower()
-    if not result:
-        raise TestRequestError(f"invalid request token: {value!r}")
-    return result

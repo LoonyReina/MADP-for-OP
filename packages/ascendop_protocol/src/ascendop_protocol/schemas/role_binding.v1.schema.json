@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.role-binding.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "role_binding_id", "principal_id", "agent_registration_id", "native_session_id", "role", "scope", "generation", "state", "valid_from", "valid_until"],
+  "properties": {
+    "schema": {"const": "ascendop.role-binding.v1"},
+    "role_binding_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "principal_id": {"type": "string", "minLength": 1},
+    "agent_registration_id": {"type": "string", "minLength": 1},
+    "native_session_id": {"type": "string", "minLength": 1},
+    "role": {"enum": ["assistant", "developer", "manager", "solver", "tester"]},
+    "scope": {"$ref": "#/$defs/scope"},
+    "generation": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "state": {"enum": ["active", "revoked", "expired"]},
+    "valid_from": {"type": "string", "minLength": 1},
+    "valid_until": {"type": ["string", "null"], "minLength": 1}
+  },
+  "$defs": {
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workspace_roots", "operator_ids", "capabilities"],
+      "properties": {
+        "workspace_roots": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "operator_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "capabilities": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    }
+  }
+}

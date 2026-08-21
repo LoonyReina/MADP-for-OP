@@ -14,6 +14,11 @@ from ascendop_daemon.workflow.operator_job_builder import (
     safe_token,
 )
 from ascendop_daemon.exchange.flow_v3_payload import package_payload
+from ascendop_daemon.exchange.flow_v3_request_identity import (
+    execution_identity_projection,
+    request_identity_material,
+    result_contract_for_operator_test,
+)
 from ascendop_daemon.control_plane.flow_v3_policy import (
     RETRY_POLICY_VERSION,
     device_stage_budget_ledger,
@@ -21,7 +26,6 @@ from ascendop_daemon.control_plane.flow_v3_policy import (
 )
 from ascendop_daemon.exchange.flow_v3_request_validation import (
     FLOW_V3_EXECUTION_PROFILE,
-    FLOW_V3_RESULT_ADAPTER,
     FlowV3RequestBuildError,
     enforce_correctness_first,
     enforce_host_handoff_dependencies,
@@ -30,28 +34,12 @@ from ascendop_daemon.exchange.flow_v3_request_validation import (
     validate_envelope_stages,
     write_immutable_json,
 )
+from ascendop_daemon.exchange.diagnostic_request_capabilities import (
+    resolve_diagnostic_request_capabilities,
+)
 from ascendop_protocol.wire_v3 import build_envelope
 
 
-BUSINESS_FAILURE_REQUIRED_ARTIFACTS = {
-    "result/SUMMARY.txt",
-    "result/PHASE_TIMELINE.jsonl",
-    "result/ENGINE_IDENTITY.json",
-    "result/CORRECTNESS.json",
-    "result/CORRECTNESS_SUMMARY.txt",
-    "result/CORRECTNESS_BATCH.json",
-    "result/RUNTIME_BOUNDARY_TRACE.json",
-    "result/runtime_boundary",
-    "result/NATIVE_WORKSPACE_QUERY_ATTRIBUTION.json",
-    "result/KERNEL_FAULT_ATTRIBUTION.json",
-    "result/kernel_fault",
-}
-RUNTIME_BOUNDARY_TRACE_ARTIFACT = "runtime-boundary-trace"
-RUNTIME_BOUNDARY_TRACE_FLAG = "runtime-boundary-trace"
-NATIVE_WORKSPACE_QUERY_ATTRIBUTION_ARTIFACT = "native-workspace-query-attribution"
-NATIVE_WORKSPACE_QUERY_ATTRIBUTION_FLAG = "native-workspace-query-attribution"
-KERNEL_FAULT_ATTRIBUTION_ARTIFACT = "kernel-fault-attribution"
-KERNEL_FAULT_ATTRIBUTION_FLAG = "kernel-fault-attribution"
 STAGE_NAME_MAP = {
     "prepare-materialize-environment": "host-prepare",
     "prepare-build-install-wheel": "host-prepare",
@@ -65,98 +53,6 @@ STAGE_NAME_MAP = {
     "assemble-result": "result-assemble",
     "postprocess-result": "result-assemble",
 }
-
-
-def request_identity_material(
-    *,
-    operator: str,
-    test_version: str,
-    case_version: str,
-    payload_digest: str,
-    execution_spec_digest: str,
-    code_generation: str,
-    endpoint_id: str,
-    endpoint_generation: str,
-    registration_generation: str,
-    operation_kind: str,
-    profiler_mode: str,
-    extensions: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
-    material: dict[str, Any] = {
-        "operator": operator,
-        "test_version": test_version,
-        "case_version": case_version,
-        "payload_digest": payload_digest,
-        "execution_spec_digest": execution_spec_digest,
-        "code_generation": code_generation,
-        "endpoint_id": endpoint_id,
-        "endpoint_generation": endpoint_generation,
-        "registration_generation": registration_generation,
-        "operation_kind": operation_kind,
-        "profiler_mode": profiler_mode,
-    }
-    material.update(dict(extensions or {}))
-    return material
-
-
-def execution_identity_projection(
-    internal_spec: Mapping[str, Any],
-) -> dict[str, Any]:
-    """Remove attempt-local labels while preserving executable semantics."""
-
-    volatile = {
-        str(internal_spec.get("request_id") or ""),
-        str(internal_spec.get("engine_job_id") or ""),
-        str(internal_spec.get("attempt_id") or ""),
-    }
-    tokens = sorted((item for item in volatile if item), key=len, reverse=True)
-
-    def project(value: Any) -> Any:
-        if isinstance(value, Mapping):
-            return {
-                str(key): project(item)
-                for key, item in value.items()
-                if str(key) not in {"request_id", "engine_job_id", "attempt_id"}
-            }
-        if isinstance(value, list):
-            return [project(item) for item in value]
-        if isinstance(value, str):
-            projected = value
-            for token in tokens:
-                projected = projected.replace(token, "<attempt-identity>")
-            return projected
-        return value
-
-    return project(internal_spec)
-
-
-def result_contract_for_operator_test(
-    internal_spec: Mapping[str, Any],
-) -> dict[str, Any]:
-    required = [
-        str(item) for item in internal_spec.get("required_artifacts", []) if str(item)
-    ]
-    return {
-        "ingest_adapter": FLOW_V3_RESULT_ADAPTER,
-        "terminal_states": [
-            "terminal-success",
-            "terminal-business-failure",
-            "terminal-infrastructure-failure",
-            "terminal-cancelled",
-        ],
-        "required_artifacts": required,
-        "required_artifacts_by_terminal_state": {
-            "terminal-success": required,
-            "terminal-business-failure": [
-                item for item in required if item in BUSINESS_FAILURE_REQUIRED_ARTIFACTS
-            ],
-        },
-        "optional_artifacts": [
-            str(item)
-            for item in internal_spec.get("optional_artifacts", [])
-            if str(item)
-        ],
-    }
 
 
 def build_diagnostic_request(
@@ -177,6 +73,8 @@ def build_diagnostic_request(
     gate_evidence: str = "",
     request_id_override: str = "",
     attempt_id_override: str = "",
+    evidence_operation: Mapping[str, Any] | None = None,
+    lineage: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], Path]:
     if profiler_mode not in {
         "primary-all-cases",
@@ -253,6 +151,20 @@ def build_diagnostic_request(
         extensions={
             "profiler_plan_digest": canonical_object_sha256(normalized_plan),
             "runtime_operator_name": str(runtime_operator_name or parsed["op"]),
+            **(
+                {
+                    "evidence_operation_digest": canonical_object_sha256(
+                        dict(evidence_operation)
+                    )
+                }
+                if evidence_operation is not None
+                else {}
+            ),
+            **(
+                {"lineage_digest": canonical_object_sha256(dict(lineage))}
+                if lineage is not None
+                else {}
+            ),
         },
     )
     request_digest = canonical_object_sha256(material)
@@ -325,6 +237,12 @@ def build_diagnostic_request(
             "hardware": parsed["hardware"],
             "job_kind": "profiler-evidence",
             "profiler": normalized_plan,
+            **(
+                {"evidence_operation": dict(evidence_operation)}
+                if evidence_operation is not None
+                else {}
+            ),
+            **({"lineage": dict(lineage)} if lineage is not None else {}),
         },
         payload={
             **payload,
@@ -497,6 +415,8 @@ def build_candidate_request(
     runtime_compatibility: tuple[str, ...] = (),
     runtime_operator_name: str = "",
     diagnostic_plan: Mapping[str, Any] | None = None,
+    evidence_operation: Mapping[str, Any] | None = None,
+    lineage: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], Path]:
     root = root.resolve()
     command = str(candidate.get("command") or "")
@@ -529,35 +449,11 @@ def build_candidate_request(
         )
         if str(item)
     }
-    native_workspace_attribution_requested = (
-        NATIVE_WORKSPACE_QUERY_ATTRIBUTION_ARTIFACT
-        in requested_diagnostic_artifacts
+    diagnostic_capabilities = resolve_diagnostic_request_capabilities(
+        requested_diagnostic_artifacts,
+        runtime_compatibility,
     )
-    kernel_fault_attribution_requested = (
-        KERNEL_FAULT_ATTRIBUTION_ARTIFACT in requested_diagnostic_artifacts
-    )
-    trace_requested = (
-        RUNTIME_BOUNDARY_TRACE_ARTIFACT in requested_diagnostic_artifacts
-        or native_workspace_attribution_requested
-    )
-    effective_runtime_compatibility = tuple(
-        dict.fromkeys(
-            [
-                *runtime_compatibility,
-                *([RUNTIME_BOUNDARY_TRACE_FLAG] if trace_requested else []),
-                *(
-                    [NATIVE_WORKSPACE_QUERY_ATTRIBUTION_FLAG]
-                    if native_workspace_attribution_requested
-                    else []
-                ),
-                *(
-                    [KERNEL_FAULT_ATTRIBUTION_FLAG]
-                    if kernel_fault_attribution_requested
-                    else []
-                ),
-            ]
-        )
-    )
+    effective_runtime_compatibility = diagnostic_capabilities.runtime_compatibility
     # Workflow retry counters are legacy presentation state. A new V3 logical
     # request always starts at attempt-001; only the Retry Controller may mint
     # a later execution attempt for that request.
@@ -592,6 +488,20 @@ def build_candidate_request(
         extensions={
             "runtime_compatibility": list(effective_runtime_compatibility),
             "runtime_operator_name": str(runtime_operator_name or parsed["op"]),
+            **(
+                {
+                    "evidence_operation_digest": canonical_object_sha256(
+                        dict(evidence_operation)
+                    )
+                }
+                if evidence_operation is not None
+                else {}
+            ),
+            **(
+                {"lineage_digest": canonical_object_sha256(dict(lineage))}
+                if lineage is not None
+                else {}
+            ),
             **(
                 {
                     "diagnostic_plan_digest": canonical_object_sha256(
@@ -674,6 +584,12 @@ def build_candidate_request(
             "operation_kind": operation_kind,
             "job_kind": operation_kind,
             **(
+                {"evidence_operation": dict(evidence_operation)}
+                if evidence_operation is not None
+                else {}
+            ),
+            **({"lineage": dict(lineage)} if lineage is not None else {}),
+            **(
                 {"diagnostic": dict(diagnostic_plan or {})}
                 if diagnostic_correctness
                 else {}
@@ -710,17 +626,7 @@ def build_candidate_request(
                 "engine-archive",
                 "correctness-first",
                 *(["diagnostic-correctness-replay"] if diagnostic_correctness else []),
-                *(["runtime-boundary-trace"] if trace_requested else []),
-                *(
-                    ["native-workspace-query-attribution"]
-                    if native_workspace_attribution_requested
-                    else []
-                ),
-                *(
-                    ["kernel-fault-attribution"]
-                    if kernel_fault_attribution_requested
-                    else []
-                ),
+                *diagnostic_capabilities.required_capabilities,
                 "device-session-wall-budget",
                 "runtime-operator-identity",
                 "device-stage-budget-ledger",

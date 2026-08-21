@@ -22,6 +22,10 @@ from ascendop_daemon.registry.topology_parser import (
     legacy_transport_mode, transport_for_binding, list_value, object_row,
     optional_token, parse_agent_pools,
 )
+from ascendop_daemon.registry.actor_registry import (
+    parse_actor_registrations,
+    parse_role_bindings,
+)
 
 class SystemRegistry:
     def __init__(self, path: Path, raw: dict[str, Any]) -> None:
@@ -39,6 +43,11 @@ class SystemRegistry:
         self.operator_defaults = defaults
         self.operator_overrides = overrides
         self.agent_pools = parse_agent_pools(raw)
+        self.actor_registrations = parse_actor_registrations(raw)
+        self.role_bindings = parse_role_bindings(
+            raw,
+            actor_registrations=self.actor_registrations,
+        )
         if self.schema == LEGACY_SYSTEM_REGISTRY_SCHEMA:
             (
                 self.gateways,

@@ -15,11 +15,20 @@ from ascendop_protocol.agent import (
     AGENT_REGISTRATION_SCHEMA,
     render_agent_output_authoring_contract,
 )
+from ascendop_protocol.actor import (
+    build_v5_prompt_context,
+    render_v5_action_contract,
+)
 from ascendop_control import ControlStore
+from ascendop_daemon.automation.agent_completion import AgentCompletionService
+from ascendop_daemon.automation.agent_outputs import AgentOutputBroker
+from ascendop_daemon.automation.agent_workspace import AgentWorkspace
+from ascendop_daemon.control_plane.control_database import ControlDatabase
 
 from .drivers import AgentDriver, default_drivers
+from .drivers.base import completion_schema
+from .port import CliAgentExecutionPort
 from .provider import AgentProviderProfile
-from .workspace import WorkspaceStager
 
 
 class AgentRunner:
@@ -39,6 +48,8 @@ class AgentRunner:
         self.root = root.resolve()
         self.store = ControlStore(database)
         self.store.assert_compatible()
+        self.control_database = ControlDatabase(database)
+        self.control_database.initialize()
         if config is not None and provider_profile is not None:
             raise ValueError("Pass either config or provider_profile, not both")
         self.provider_profile = provider_profile or (
@@ -59,7 +70,15 @@ class AgentRunner:
         if not self.runner_generation:
             raise ValueError("Agent runner package generation is required")
         self.service_id = f"ascendop-agent-runner:{socket.gethostname()}"
-        self.stager = WorkspaceStager(self.root)
+        self.stager = AgentWorkspace(self.root)
+        self.outputs = AgentOutputBroker(self.root, self.stager.runs_root)
+        self.completions = AgentCompletionService(
+            self.root,
+            self.control_database,
+            code_generation=self.code_generation,
+            workspace=self.stager,
+            outputs=self.outputs,
+        )
         self.lease_seconds = int(lease_seconds)
         if not 15 <= self.lease_seconds <= 120:
             raise ValueError("Agent lease seconds must be in [15, 120]")
@@ -254,9 +273,13 @@ class AgentRunner:
                 "reason": "workflow-gate-no-longer-current",
             }
         try:
-            _, workspace = self.stager.stage(action)
-            before = self.stager.snapshot(workspace)
-            prompt = self._prompt(action, claimed["context"], workspace)
+            _, workspace, before = self._stage_claimed_workspace(claimed)
+            prompt = self._prompt(
+                action,
+                claimed["context"],
+                workspace,
+                attempt_context=claimed["attempt_context"],
+            )
         except Exception as exc:
             return self._settle_exception(
                 claimed,
@@ -280,14 +303,26 @@ class AgentRunner:
 
         timeout_seconds = int(action["tool_budget"]["max_turn_seconds"])
         try:
-            result = driver.start(
-                prompt=prompt,
-                workspace=workspace,
+            port = CliAgentExecutionPort(
+                root=self.root,
+                driver=driver,
                 run_root=attempt_run_root,
                 timeout_seconds=timeout_seconds,
                 heartbeat=heartbeat,
             )
-            completion = driver.collect(result)
+            binding = port.deliver_action(
+                action_id=str(action["action_id"]),
+                idempotency_key=str(claimed["attempt_id"]),
+                native_session_id=str(agent["agent_id"]),
+                prompt=prompt,
+                workspace=workspace,
+                output_schema=completion_schema(),
+            )
+            native_outcome = port.collect_outcome(
+                action_id=str(action["action_id"]),
+                native_session_id=binding.native_session_id,
+                native_turn_id=binding.native_turn_id,
+            )
         except Exception as exc:
             return self._settle_exception(
                 claimed,
@@ -301,9 +336,8 @@ class AgentRunner:
             )
         return self._record_result(
             claimed,
-            driver=driver,
-            result=result,
-            completion=completion,
+            driver_id=driver.driver_id,
+            native_outcome=native_outcome,
             started_at=started_at,
             workspace=workspace,
             before=before,
@@ -336,7 +370,7 @@ class AgentRunner:
                 status="uncertain",
                 session_id=session_id,
             )
-        _, workspace = self.stager.stage(action)
+        _, workspace, before = self._stage_claimed_workspace(claimed)
         attempt_run_root = self.stager.attempt_run_root(
             str(action["action_id"]), str(claimed["attempt_id"])
         )
@@ -351,9 +385,13 @@ class AgentRunner:
                 workspace=workspace,
                 session_id=session_id,
             )
-        before = self.stager.snapshot(origin)
         started_at = _utc_now()
-        prompt = self._prompt(action, claimed["context"], workspace)
+        prompt = self._prompt(
+            action,
+            claimed["context"],
+            workspace,
+            attempt_context=claimed["attempt_context"],
+        )
 
         def heartbeat() -> None:
             self.store.heartbeat_agent_action(
@@ -368,20 +406,27 @@ class AgentRunner:
             )
 
         try:
-            result = driver.resume(
-                session_id=session_id,
-                prompt=prompt,
-                workspace=workspace,
+            port = CliAgentExecutionPort(
+                root=self.root,
+                driver=driver,
                 run_root=attempt_run_root / "reconcile",
                 timeout_seconds=int(action["tool_budget"]["max_turn_seconds"]),
                 heartbeat=heartbeat,
+                resume_session_id=session_id,
             )
-            if result.session_id and result.session_id != session_id:
-                raise RuntimeError(
-                    "Agent resume returned a different session identity: "
-                    f"{result.session_id}"
-                )
-            completion = driver.collect(result)
+            binding = port.deliver_action(
+                action_id=str(action["action_id"]),
+                idempotency_key=str(claimed["attempt_id"]),
+                native_session_id=session_id,
+                prompt=prompt,
+                workspace=workspace,
+                output_schema=completion_schema(),
+            )
+            native_outcome = port.collect_outcome(
+                action_id=str(action["action_id"]),
+                native_session_id=binding.native_session_id,
+                native_turn_id=binding.native_turn_id,
+            )
         except Exception as exc:
             return self._settle_exception(
                 claimed,
@@ -395,21 +440,38 @@ class AgentRunner:
             )
         return self._record_result(
             claimed,
-            driver=driver,
-            result=result,
-            completion=completion,
+            driver_id=driver.driver_id,
+            native_outcome=native_outcome,
             started_at=started_at,
             workspace=workspace,
             before=before,
         )
 
+    def _stage_claimed_workspace(
+        self,
+        claimed: dict[str, Any],
+    ) -> tuple[Path, Path, dict[str, str]]:
+        context = dict(claimed["context"])
+        evidence: list[dict[str, Any]] = []
+        for field in ("workflow_evidence", "reference_evidence"):
+            rows = context.get(field, [])
+            if not isinstance(rows, list) or not all(
+                isinstance(item, dict) for item in rows
+            ):
+                raise RuntimeError(f"Agent {field} must be a list of objects")
+            evidence.extend(dict(item) for item in rows)
+        run_root, workspace, before = self.stager.stage(
+            claimed["action"], evidence
+        )
+        self.outputs.stage(claimed["action"], workspace)
+        return run_root, workspace, before
+
     def _record_result(
         self,
         claimed: dict[str, Any],
         *,
-        driver: AgentDriver,
-        result: Any,
-        completion: dict[str, Any],
+        driver_id: str,
+        native_outcome: dict[str, Any],
         started_at: str,
         workspace: Path,
         before: dict[str, str],
@@ -417,25 +479,15 @@ class AgentRunner:
         action = claimed["action"]
         lease = claimed["lease"]
         agent = claimed["agent"]
+        completion = dict(native_outcome["structured_result"])
         after = self.stager.snapshot(workspace)
-        changed_paths = self.stager.changed_paths(before, after)
-        out_of_scope = self.stager.out_of_scope_paths(
-            changed_paths,
-            list(action["write_scope"]),
+        completion["changed_paths"] = self.stager.changed_paths(before, after)
+        completion["out_of_scope_paths"] = self.stager.out_of_scope_paths(
+            completion["changed_paths"], list(action["write_scope"])
         )
-        completion["changed_paths"] = changed_paths
-        completion["out_of_scope_paths"] = out_of_scope
         completion["source_after_digest"] = self.stager.digest(workspace)
-        completion["session_id"] = result.session_id
-        status = result.status
-        if out_of_scope:
-            status = "failed"
-            completion["status"] = "failed"
-            completion["failure_class"] = "write-scope-violation"
-        artifacts = [
-            result.raw_output_path.relative_to(self.root).as_posix(),
-            result.stderr_path.relative_to(self.root).as_posix(),
-        ]
+        status = str(native_outcome["terminal_status"])
+        artifacts = list(native_outcome["artifact_refs"])
         completion["artifacts"] = sorted(
             set([*completion.get("artifacts", []), *artifacts])
         )
@@ -459,53 +511,36 @@ class AgentRunner:
                 lease_seconds=self.lease_seconds,
             )
             self._quarantined_agent_ids.add(str(agent["agent_id"]))
-        if (
-            status == "failed"
-            and completion.get("failure_class") in {"agent-adapter", "agent-auth"}
-            and not changed_paths
-            and not out_of_scope
-        ):
-            pending = self.store.defer_agent_action_retry(
-                action_id=str(action["action_id"]),
-                lease_token=str(lease["lease_token"]),
-                failure=completion,
-                lease_seconds=self.lease_seconds,
-            )
-            return {
-                "state": "retry-pending",
-                "runner_id": self.runner_id,
-                "driver": driver.driver_id,
-                "action_id": action["action_id"],
-                "iteration_id": action["iteration_id"],
-                "workspace": workspace.relative_to(self.root).as_posix(),
-                "retry_pending": pending,
-                "error": completion,
-            }
-        receipt = {
-            "schema": AGENT_ACTION_RECEIPT_SCHEMA,
-            "action_id": action["action_id"],
-            "iteration_id": action["iteration_id"],
-            "agent_id": agent["agent_id"],
-            "lease_id": lease["lease_id"],
-            "status": status,
-            "started_at": started_at,
-            "completed_at": _utc_now(),
-            "completion": completion,
-            "artifacts": artifacts,
+        normalized_native_outcome = {
+            **native_outcome,
+            "structured_result": completion,
+            "artifact_refs": artifacts,
         }
-        terminal = self.store.complete_agent_action(
-            receipt,
+        settled = self.completions.complete(
+            action_id=str(action["action_id"]),
             lease_token=str(lease["lease_token"]),
+            lease_id=str(lease["lease_id"]),
+            agent_id=str(agent["agent_id"]),
+            started_at=started_at,
+            native_outcome=normalized_native_outcome,
+            completion_metadata={
+                "adapter_id": driver_id,
+                "runner_generation": self.runner_generation,
+                "agent_execution_contract_digest": self.execution_contract_digest,
+            },
         )
-        return {
-            "state": status,
+        response = {
+            "state": str(settled["terminal"]["state"]),
             "runner_id": self.runner_id,
-            "driver": driver.driver_id,
+            "driver": driver_id,
             "action_id": action["action_id"],
             "iteration_id": action["iteration_id"],
             "workspace": workspace.relative_to(self.root).as_posix(),
-            "terminal": terminal,
+            **settled,
         }
+        if response["state"] != "completed":
+            response["error"] = completion
+        return response
 
     def _settle_exception(
         self,
@@ -567,6 +602,41 @@ class AgentRunner:
                 "retry_pending": pending,
                 "error": completion,
             }
+        if workspace is not None and workspace.is_dir():
+            native_session_id = session_id or f"uncertain:{claimed['attempt_id']}"
+            settled = self.completions.complete(
+                action_id=str(action["action_id"]),
+                lease_token=str(lease["lease_token"]),
+                lease_id=str(lease["lease_id"]),
+                agent_id=str(agent["agent_id"]),
+                started_at=started_at or _utc_now(),
+                native_outcome={
+                    "schema": "ascendop.native-turn-outcome.v1",
+                    "action_id": str(action["action_id"]),
+                    "native_session_id": native_session_id,
+                    "native_turn_id": native_session_id,
+                    "terminal_status": status,
+                    "structured_result": completion,
+                    "artifact_refs": completion["artifacts"],
+                    "telemetry": {"usage": {}, "skills": {}},
+                    "observed_at": _utc_now(),
+                },
+                completion_metadata={
+                    "adapter_id": str(agent["driver"]),
+                    "runner_generation": self.runner_generation,
+                    "agent_execution_contract_digest": self.execution_contract_digest,
+                },
+            )
+            return {
+                "state": str(settled["terminal"]["state"]),
+                "runner_id": self.runner_id,
+                "driver": str(agent["driver"]),
+                "action_id": action["action_id"],
+                "iteration_id": action["iteration_id"],
+                "workspace": workspace.relative_to(self.root).as_posix(),
+                **settled,
+                "error": completion,
+            }
         receipt = {
             "schema": AGENT_ACTION_RECEIPT_SCHEMA,
             "action_id": action["action_id"],
@@ -603,6 +673,8 @@ class AgentRunner:
         action: dict[str, Any],
         context: dict[str, Any],
         workspace: Path,
+        *,
+        attempt_context: dict[str, Any],
     ) -> str:
         runbook = (self.root / str(action["runbook_path"])).resolve()
         if self.root not in runbook.parents or not runbook.is_file():
@@ -611,11 +683,17 @@ class AgentRunner:
         if digest != action["runbook_digest"]:
             raise RuntimeError("agent action runbook digest mismatch")
         output_authoring = render_agent_output_authoring_contract(
-            action.get("output_contracts", [])
+            action.get("output_contracts", []),
+            candidate_version=str(action.get("candidate_version") or ""),
+        )
+        v5_action_contract = render_v5_action_contract(
+            build_v5_prompt_context(action, context, attempt_context)
         )
         return (
             runbook.read_text(encoding="utf-8")
-            + "\n\nFLOW V4 ACTION (immutable):\n"
+            + "\n\nFLOW V5 ACTION CONTRACT (generated):\n"
+            + v5_action_contract
+            + "\n\nLEGACY AGENT ACTION PAYLOAD (immutable):\n"
             + json.dumps(action, ensure_ascii=True, indent=2, sort_keys=True)
             + "\n\nHANDOFF CONTEXT (immutable):\n"
             + json.dumps(context, ensure_ascii=True, indent=2, sort_keys=True)

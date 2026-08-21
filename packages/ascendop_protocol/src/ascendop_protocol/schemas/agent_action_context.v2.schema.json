@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.agent-action-context.v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "context_id", "action_id", "catalog_generation", "catalog_digest", "role", "candidate", "case", "comparable_result", "baseline", "evidence_index", "hypotheses", "environment", "budget", "write_scope", "allowed_outcomes", "available_evidence_operations", "output_schemas", "created_at"],
+  "properties": {
+    "schema": {"const": "ascendop.agent-action-context.v2"},
+    "context_id": {"type": "string", "minLength": 1},
+    "action_id": {"type": "string", "minLength": 1},
+    "catalog_generation": {"type": "string", "minLength": 1},
+    "catalog_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "role": {"enum": ["assistant", "developer", "manager", "solver", "tester"]},
+    "candidate": {"type": "object"},
+    "case": {"type": "object"},
+    "comparable_result": {"type": "object"},
+    "baseline": {"type": "object"},
+    "evidence_index": {"type": "object"},
+    "hypotheses": {"type": "array", "items": {"type": "object"}},
+    "environment": {"type": "object"},
+    "budget": {"type": "object"},
+    "lineage": {"type": "object"},
+    "write_scope": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "allowed_outcomes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["proposed_change", "no_change_with_evidence", "request_evidence", "blocked_external", "protocol_gap"]}},
+    "available_evidence_operations": {"type": "array", "uniqueItems": true, "items": {"enum": ["test.correctness", "test.performance", "profile.collect", "profile.compare", "correctness.replay", "environment.conformance", "artifact.recover"]}},
+    "output_schemas": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "created_at": {"type": "string", "minLength": 1}
+  }
+}

@@ -68,6 +68,14 @@ class AgentSourceIdentityChanged(AgentWorkspaceError):
         )
 
 
+class AgentWriteScopeViolation(AgentWorkspaceError):
+    def __init__(self, paths: list[str]) -> None:
+        self.paths = list(paths)
+        super().__init__(
+            "Agent changed paths outside its write scope: " + ", ".join(paths)
+        )
+
+
 class AgentWorkspace:
     """Stages and promotes Agent edits without granting canonical write access."""
 
@@ -91,6 +99,37 @@ class AgentWorkspace:
         if stage_path.is_file():
             if not workspace.is_dir() or workspace.is_symlink():
                 raise AgentWorkspaceError("published Agent workspace is unavailable")
+            stage = self._read_object(stage_path)
+            expected = str(
+                action.get("candidate_identity", {}).get("execution_source_digest")
+                or ""
+            )
+            if (
+                str(stage.get("action_id") or "") != action_id
+                or str(stage.get("origin_workspace") or "")
+                != str(action["origin_workspace"])
+                or (
+                    expected
+                    and expected != str(stage.get("source_before_digest") or "")
+                )
+            ):
+                raise AgentWorkspaceError(
+                    "published Agent stage identity changed during recovery"
+                )
+            evidence_manifest = self._stage_evidence(workspace, evidence or [])
+            if str(evidence_manifest.get("manifest_digest") or "") != str(
+                stage.get("evidence_digest") or ""
+            ):
+                raise AgentWorkspaceError(
+                    "published Agent evidence changed during recovery"
+                )
+            before = dict(stage.get("snapshot") or {})
+            if not all(
+                isinstance(path, str) and isinstance(digest, str)
+                for path, digest in before.items()
+            ):
+                raise AgentWorkspaceError("published Agent stage snapshot is invalid")
+            return run_root, workspace, before
         else:
             if workspace.exists():
                 if not workspace.is_dir() or workspace.is_symlink():
@@ -151,10 +190,7 @@ class AgentWorkspace:
         scopes = [str(item) for item in action.get("write_scope", [])]
         out_of_scope = self.out_of_scope_paths(changed, scopes)
         if out_of_scope:
-            raise AgentWorkspaceError(
-                "Agent changed paths outside its write scope: "
-                + ", ".join(out_of_scope)
-            )
+            raise AgentWriteScopeViolation(out_of_scope)
         seal = {
             "schema": SOURCE_SEAL_SCHEMA,
             "action_id": str(action["action_id"]),
@@ -172,7 +208,15 @@ class AgentWorkspace:
             "deleted_paths": [path for path in changed if path not in after],
             "created_at": _utc_now(),
         }
-        self._write_json(run_root / "source-seal.json", seal)
+        seal_path = run_root / "source-seal.json"
+        if seal_path.is_file():
+            existing = self._read_object(seal_path)
+            if {
+                key: value for key, value in existing.items() if key != "created_at"
+            } != {key: value for key, value in seal.items() if key != "created_at"}:
+                raise AgentWorkspaceError("immutable Agent source seal changed")
+            return existing
+        self._write_json(seal_path, seal)
         return seal
 
     def promote(self, seal_path: Path) -> dict[str, Any]:
@@ -551,6 +595,15 @@ class AgentWorkspace:
         if path.parent != self.runs_root:
             raise AgentWorkspaceError("Agent action root escaped the runs directory")
         return path
+
+    def attempt_run_root(self, action_id: str, attempt_id: str) -> Path:
+        action_root = self.run_root(action_id)
+        attempt_root = (
+            action_root / "attempts" / _token(attempt_id, "attempt_id")
+        ).resolve()
+        if attempt_root.parent != (action_root / "attempts").resolve():
+            raise AgentWorkspaceError("Agent attempt path escaped its action root")
+        return attempt_root
 
     def digest(self, workspace: Path) -> str:
         digest = hashlib.sha256()

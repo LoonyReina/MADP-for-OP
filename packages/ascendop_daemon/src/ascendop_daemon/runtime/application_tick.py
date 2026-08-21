@@ -38,6 +38,11 @@ def run_application_tick(
         if stop_request
         else application.submit_intake.run_once()
     )
+    evidence_operation_intake = (
+        {"state": "stopped", "generated_count": 0, "errors": []}
+        if stop_request
+        else application.evidence_operation_intake.run_once()
+    )
     diagnostic_intake = (
         {"state": "stopped", "generated_count": 0, "errors": []}
         if stop_request
@@ -77,17 +82,24 @@ def run_application_tick(
     )
     control_command = application.control_commands.run_once()
     official_progress = application._publish_official_progress()
-    automation = (
-        {"source_count": 0, "actions": [], "errors": [], "stopped": True}
-        if stop_request
-        else application.assistant.run_once(
+    if stop_request:
+        manager_cycle = application.assistant.run_manager_notifications_once()
+        automation = {
+            "source_count": 0,
+            "steward_escalation_count": 0,
+            "protocol_gap_count": 0,
+            **manager_cycle,
+            "stopped": True,
+        }
+    else:
+        automation = application.assistant.run_once(
             steward_escalations=session_gate.get("steward_escalations", [])
         )
-    )
     heartbeat_details = {
         "assistant_trigger": automation,
         "official_progress": official_progress,
         "submit_intake": intake,
+        "evidence_operation_intake": evidence_operation_intake,
         "diagnostic_intake": diagnostic_intake,
         "endpoint_dispatch": dispatch,
         "endpoint_reconciliation": endpoint_reconciliation,
@@ -110,6 +122,7 @@ def run_application_tick(
         "stop_request": stop_request or {},
         "dispatch": dispatch,
         "intake": intake,
+        "evidence_operation_intake": evidence_operation_intake,
         "diagnostic_intake": diagnostic_intake,
         "retry": retry,
         "control_command": control_command,

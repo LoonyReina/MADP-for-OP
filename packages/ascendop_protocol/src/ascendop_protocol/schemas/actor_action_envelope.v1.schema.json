@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.actor-action-envelope.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "action_id", "idempotency_key", "action_kind", "effective_role", "principal_id", "role_binding_id", "producer_generation", "scope", "lease", "causation", "payload", "created_at"],
+  "properties": {
+    "schema": {"const": "ascendop.actor-action-envelope.v1"},
+    "action_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "idempotency_key": {"type": "string", "minLength": 1},
+    "action_kind": {"enum": ["solver.iterate", "solver.repair", "tester.casegen", "tester.case-repair", "manager.flow-start", "manager.flow-pause", "manager.flow-resume", "manager.flow-stop", "manager.request-user-decision", "manager.review-notification", "assistant.official-prepare", "assistant.official-submit", "assistant.official-poll", "assistant.official-import-result", "developer.repair-capability", "developer.publish-protocol"]},
+    "effective_role": {"enum": ["assistant", "developer", "manager", "solver", "tester"]},
+    "principal_id": {"type": "string", "minLength": 1},
+    "role_binding_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "producer_generation": {"type": "string", "minLength": 1},
+    "scope": {"$ref": "#/$defs/scope"},
+    "lease": {"$ref": "#/$defs/lease"},
+    "causation": {"$ref": "#/$defs/causation"},
+    "payload": {"type": "object"},
+    "created_at": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {"if": {"properties": {"action_kind": {"enum": ["solver.iterate", "solver.repair"]}}}, "then": {"properties": {"payload": {"$ref": "#/$defs/solver_payload"}}}},
+    {"if": {"properties": {"action_kind": {"enum": ["tester.casegen", "tester.case-repair"]}}}, "then": {"properties": {"payload": {"$ref": "#/$defs/tester_payload"}}}},
+    {"if": {"properties": {"action_kind": {"enum": ["manager.flow-start", "manager.flow-pause", "manager.flow-resume", "manager.flow-stop"]}}}, "then": {"properties": {"payload": {"$ref": "#/$defs/manager_lifecycle_payload"}}}},
+    {"if": {"properties": {"action_kind": {"const": "manager.request-user-decision"}}}, "then": {"properties": {"payload": {"$ref": "#/$defs/manager_decision_payload"}}}},
+    {"if": {"properties": {"action_kind": {"const": "manager.review-notification"}}}, "then": {"properties": {"payload": {"$ref": "#/$defs/manager_notification_payload"}}}},
+    {"if": {"properties": {"action_kind": {"enum": ["assistant.official-prepare", "assistant.official-submit"]}}}, "then": {"properties": {"payload": {"$ref": "#/$defs/assistant_prepare_payload"}}}},
+    {"if": {"properties": {"action_kind": {"const": "assistant.official-poll"}}}, "then": {"properties": {"payload": {"$ref": "#/$defs/assistant_poll_payload"}}}},
+    {"if": {"properties": {"action_kind": {"const": "assistant.official-import-result"}}}, "then": {"properties": {"payload": {"$ref": "#/$defs/assistant_import_payload"}}}},
+    {"if": {"properties": {"action_kind": {"const": "developer.repair-capability"}}}, "then": {"properties": {"payload": {"$ref": "#/$defs/developer_repair_payload"}}}},
+    {"if": {"properties": {"action_kind": {"const": "developer.publish-protocol"}}}, "then": {"properties": {"payload": {"$ref": "#/$defs/developer_publish_payload"}}}}
+  ],
+  "$defs": {
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workspace_roots", "operator_ids", "capabilities"],
+      "properties": {
+        "workspace_roots": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "operator_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "capabilities": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "lease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lease_id", "generation", "expires_at"],
+      "properties": {
+        "lease_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+        "generation": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+        "expires_at": {"type": "string", "minLength": 1}
+      }
+    },
+    "causation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trace_id", "correlation_id", "parent_action_id", "candidate_id", "promotion_receipt_id", "request_id", "attempt_id"],
+      "properties": {
+        "trace_id": {"type": "string", "minLength": 1},
+        "correlation_id": {"type": "string", "minLength": 1},
+        "parent_action_id": {"type": ["string", "null"]},
+        "candidate_id": {"type": ["string", "null"]},
+        "promotion_receipt_id": {"type": ["string", "null"]},
+        "request_id": {"type": ["string", "null"]},
+        "attempt_id": {"type": ["string", "null"]}
+      }
+    },
+    "solver_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operator_id", "candidate_id", "context_id", "workspace"],
+      "properties": {
+        "operator_id": {"type": "string", "minLength": 1},
+        "candidate_id": {"type": "string", "minLength": 1},
+        "context_id": {"type": "string", "minLength": 1},
+        "workspace": {"type": "string", "minLength": 1}
+      }
+    },
+    "tester_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operator_id", "case_id", "context_id", "workspace"],
+      "properties": {
+        "operator_id": {"type": "string", "minLength": 1},
+        "case_id": {"type": "string", "minLength": 1},
+        "context_id": {"type": "string", "minLength": 1},
+        "workspace": {"type": "string", "minLength": 1}
+      }
+    },
+    "manager_lifecycle_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["flow_id", "reason"],
+      "properties": {
+        "flow_id": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "manager_decision_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["flow_id", "decision_id", "prompt", "options"],
+      "properties": {
+        "flow_id": {"type": "string", "minLength": 1},
+        "decision_id": {"type": "string", "minLength": 1},
+        "prompt": {"type": "string", "minLength": 1},
+        "options": {"type": "array", "minItems": 2, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "manager_notification_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["notification_id", "notification_kind", "flow_id", "operator_id", "summary", "requires_response", "evidence_refs", "allowed_commands"],
+      "properties": {
+        "notification_id": {"type": "string", "minLength": 1},
+        "notification_kind": {"enum": ["user_decision", "external_hold", "capability_gap"]},
+        "flow_id": {"type": "string", "minLength": 1},
+        "operator_id": {"type": "string", "minLength": 1},
+        "summary": {"type": "string", "minLength": 1},
+        "requires_response": {"type": "boolean"},
+        "evidence_refs": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "allowed_commands": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "assistant_identity": {
+      "type": "object",
+      "required": ["campaign_id", "operator_id", "candidate_id", "candidate_digest", "official_attempt_id", "authorization_id"],
+      "properties": {
+        "campaign_id": {"type": "string", "minLength": 1},
+        "operator_id": {"type": "string", "minLength": 1},
+        "candidate_id": {"type": "string", "minLength": 1},
+        "candidate_digest": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+        "official_attempt_id": {"type": "string", "minLength": 1},
+        "authorization_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "assistant_prepare_payload": {
+      "allOf": [
+        {"$ref": "#/$defs/assistant_identity"},
+        {"type": "object", "additionalProperties": false, "required": ["campaign_id", "operator_id", "candidate_id", "candidate_digest", "official_attempt_id", "authorization_id", "workspace", "runbook_path", "project_digest", "source_file_digests", "submit_url", "rules_generation"], "properties": {
+          "campaign_id": {"type": "string", "minLength": 1}, "operator_id": {"type": "string", "minLength": 1}, "candidate_id": {"type": "string", "minLength": 1}, "candidate_digest": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}, "official_attempt_id": {"type": "string", "minLength": 1}, "authorization_id": {"type": "string", "minLength": 1}, "workspace": {"type": "string", "minLength": 1}, "runbook_path": {"type": "string", "minLength": 1}, "project_digest": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}, "source_file_digests": {"$ref": "#/$defs/digest_map"}, "submit_url": {"type": "string", "minLength": 1}, "rules_generation": {"type": "string", "minLength": 1}
+        }}
+      ]
+    },
+    "assistant_poll_payload": {
+      "type": "object", "additionalProperties": false,
+      "required": ["campaign_id", "operator_id", "candidate_id", "candidate_digest", "official_attempt_id", "authorization_id", "submission_id", "official_receipt_id", "submission_url", "project_digest", "source_file_digests"],
+      "properties": {
+        "campaign_id": {"type": "string", "minLength": 1}, "operator_id": {"type": "string", "minLength": 1}, "candidate_id": {"type": "string", "minLength": 1}, "candidate_digest": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}, "official_attempt_id": {"type": "string", "minLength": 1}, "authorization_id": {"type": "string", "minLength": 1}, "submission_id": {"type": "string", "minLength": 1}, "official_receipt_id": {"type": "string", "minLength": 1}, "submission_url": {"type": "string", "minLength": 1}, "project_digest": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}, "source_file_digests": {"$ref": "#/$defs/digest_map"}
+      }
+    },
+    "assistant_import_payload": {
+      "type": "object", "additionalProperties": false,
+      "required": ["campaign_id", "operator_id", "candidate_id", "candidate_digest", "official_attempt_id", "authorization_id", "submission_id", "official_receipt_id", "result_ref", "result_digest"],
+      "properties": {
+        "campaign_id": {"type": "string", "minLength": 1}, "operator_id": {"type": "string", "minLength": 1}, "candidate_id": {"type": "string", "minLength": 1}, "candidate_digest": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}, "official_attempt_id": {"type": "string", "minLength": 1}, "authorization_id": {"type": "string", "minLength": 1}, "submission_id": {"type": "string", "minLength": 1}, "official_receipt_id": {"type": "string", "minLength": 1}, "result_ref": {"type": "string", "minLength": 1}, "result_digest": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}
+      }
+    },
+    "developer_repair_payload": {
+      "type": "object", "additionalProperties": false,
+      "required": ["capability_gap_id", "capability_code", "runbook_path", "resume_condition", "gap_context"],
+      "properties": {
+        "capability_gap_id": {"type": "string", "minLength": 1}, "capability_code": {"type": "string", "minLength": 1}, "runbook_path": {"type": "string", "minLength": 1}, "resume_condition": {"type": "string", "minLength": 1}, "gap_context": {"$ref": "#/$defs/developer_gap_context"}
+      }
+    },
+    "developer_gap_context": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_kind", "operator_id", "identity", "evidence_refs"],
+      "properties": {
+        "source_kind": {"type": "string", "minLength": 1},
+        "operator_id": {"type": "string", "minLength": 1},
+        "identity": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string", "minLength": 1}},
+        "evidence_refs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "gate_stage": {"type": ["string", "null"]},
+        "next_command": {"type": ["string", "null"]}
+      }
+    },
+    "developer_publish_payload": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocol_generation", "catalog_digest", "artifact_refs"],
+      "properties": {
+        "protocol_generation": {"type": "string", "minLength": 1}, "catalog_digest": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}, "artifact_refs": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "digest_map": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}
+    }
+  }
+}

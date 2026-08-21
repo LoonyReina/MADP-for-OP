@@ -4,8 +4,9 @@ import hashlib
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
 
+from ascendop_protocol.actor import AGENT_ACTION_OUTCOME_SCHEMA
 from ascendop_protocol.agent import (
     AGENT_ACTION_SCHEMA,
     AGENT_CONTEXT_SNAPSHOT_SCHEMA,
@@ -16,6 +17,9 @@ from ascendop_control.storage.errors import ControlRepositoryError
 from ascendop_daemon.automation.agent_context import (
     SOURCE_IDENTITY_SCHEMA,
     build_agent_context_evidence,
+)
+from ascendop_daemon.automation.evidence_operations import (
+    EvidenceOperationCoordinator,
 )
 from ascendop_daemon.automation.agent_outputs import (
     agent_output_contracts_digest,
@@ -36,11 +40,19 @@ from ascendop_daemon.storage.control_types import ControlDatabaseError
 from ascendop_daemon.core.models import ActionKind, BoardSnapshot, DaemonConfig, GateDecision
 from ascendop_daemon.storage.state_reader import StateReader
 from ascendop_daemon.workflow.gate_engine import GateEngine
+from ascendop_daemon.workflow.engine_candidates import extract_submit_command
+from ascendop_daemon.workflow.operator_job_builder import parse_submit_command
 from ascendop_daemon.workflow.policy_pipeline import WorkflowPolicyPipeline
 
 
 class SnapshotReader(Protocol):
     def read(self) -> BoardSnapshot: ...
+
+
+class EvidenceOperationPending(RuntimeError):
+    def __init__(self, operation: Mapping[str, Any]) -> None:
+        super().__init__("registered evidence operation is pending")
+        self.operation = dict(operation)
 
 
 class AgentGateCoordinator:
@@ -89,6 +101,7 @@ class AgentGateCoordinator:
                 "errors": [str(exc)],
             }
         actions: list[dict[str, Any]] = []
+        evidence_pending: list[dict[str, Any]] = []
         errors: list[dict[str, str]] = []
         eligible = 0
         for decision in decisions:
@@ -100,6 +113,8 @@ class AgentGateCoordinator:
             eligible += 1
             try:
                 actions.append(self._publish(decision, snapshot.captured_at))
+            except EvidenceOperationPending as exc:
+                evidence_pending.append(exc.operation)
             except (OSError, ValueError, ControlDatabaseError, ControlRepositoryError) as exc:
                 errors.append({"operator": decision.row.op, "error": str(exc)})
         cancelled = self.database.synchronize_workflow_agent_gate_heads(
@@ -122,6 +137,7 @@ class AgentGateCoordinator:
             "board_rows": len(snapshot.rows),
             "eligible_count": eligible,
             "actions": actions,
+            "evidence_operations_pending": evidence_pending,
             "steward_escalations": steward_escalations,
             "cancelled_obsolete": cancelled,
             "errors": errors,
@@ -135,6 +151,7 @@ class AgentGateCoordinator:
         )
         if not runbook or not (self.root / runbook).is_file():
             raise ValueError(f"{row.op} {role} runbook is missing: {runbook}")
+        runbook_digest = hashlib.sha256((self.root / runbook).read_bytes()).hexdigest()
         workspace_path = role_workspace(self.root, row.op, role)
         workspace = self.root / workspace_path
         evidence = build_agent_context_evidence(
@@ -150,6 +167,7 @@ class AgentGateCoordinator:
             role=role,
             operator_id=operator_id,
             runbook_path=runbook,
+            runbook_digest=runbook_digest,
         )
         identity["source_identity_schema"] = SOURCE_IDENTITY_SCHEMA
         identity["execution_source_digest"] = evidence["source_before_digest"]
@@ -209,6 +227,12 @@ class AgentGateCoordinator:
         existing = self.database.agent_action(action_id)
         if existing is not None:
             return existing
+        context_completeness = self._ensure_context_completeness(
+            role=role,
+            operator_id=operator_id,
+            operator=row.op,
+            evidence=evidence,
+        )
         candidate_version = (
             pending_reservation[0]
             if pending_reservation is not None
@@ -224,7 +248,6 @@ class AgentGateCoordinator:
             )
         )
         iteration_id = f"agi-{board_digest}"
-        runbook_digest = hashlib.sha256((self.root / runbook).read_bytes()).hexdigest()
         created_at = captured_at or _utc_now()
         action = {
             "schema": AGENT_ACTION_SCHEMA,
@@ -251,6 +274,9 @@ class AgentGateCoordinator:
                 "source_identity_schema": SOURCE_IDENTITY_SCHEMA,
                 "execution_source_digest": evidence["source_before_digest"],
             },
+            "causation": _next_action_causation(
+                context_completeness["evidence_operations"]
+            ),
             "write_scope": role_contract["write_scope"],
             "output_contracts": output_contracts,
             "tool_budget": {"max_turn_seconds": self.max_turn_seconds},
@@ -279,17 +305,125 @@ class AgentGateCoordinator:
             "workflow_evidence": evidence["workflow_evidence"],
             "reference_projection": evidence["reference_projection"],
             "reference_evidence": evidence["reference_evidence"],
+            "active_case_version": context_completeness["active_case_version"],
+            "evidence_operations": context_completeness["evidence_operations"],
+            "context_completeness": context_completeness,
+            "causation": action["causation"],
             "permitted_operations": role_contract["permitted_operations"],
             "created_at": created_at,
         }
-        if role == "tester":
-            self.database.reconcile_workflow_agent_candidate(
-                operator_id=operator_id,
-                role=role,
-                candidate_version=candidate_version,
-                keep_action_id=action_id,
-            )
+        self.database.reconcile_workflow_agent_candidate(
+            operator_id=operator_id,
+            role=role,
+            candidate_version=candidate_version,
+            keep_action_id=action_id,
+        )
         return self.database.create_agent_action(action, context)
+
+    def _ensure_context_completeness(
+        self,
+        *,
+        role: str,
+        operator_id: str,
+        operator: str,
+        evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        recent_operations = self.database.recent_evidence_operations(
+            operator_id=operator_id,
+            expected_consumer=role,
+        )
+        base = {
+            "schema": "ascendop.agent-context-completeness.v1",
+            "state": "complete",
+            "required_fields": [
+                "candidate",
+                "active_case_version",
+                "latest_comparable_result",
+                "baseline",
+                "evidence_index",
+                "environment",
+                "budget",
+            ],
+            "missing_fields": [],
+            "active_case_version": "",
+            "evidence_operations": recent_operations,
+        }
+        if role != "solver" or list(evidence.get("recent_results") or []):
+            return base
+        previous = next(
+            (
+                item
+                for item in reversed(self.database.agent_actions_v4())
+                if item.get("operator_id") == operator_id
+                and item.get("role") == "solver"
+                and item.get("state") == "completed"
+            ),
+            None,
+        )
+        if previous is None:
+            return base
+        previous_action = dict(previous.get("action") or {})
+        test_version = str(previous_action.get("candidate_version") or "")
+        submit_root = _candidate_submit_root(self.root, operator, test_version)
+        if submit_root is None:
+            return base
+        parsed = parse_submit_command(
+            extract_submit_command(submit_root / "SUBMIT.md")
+        )
+        case_version = str(parsed["case_version"])
+        base["active_case_version"] = case_version
+        existing = [
+            item
+            for item in self.database.evidence_operations_for_origin(
+                action_id=str(previous_action["action_id"])
+            )
+            if item["operation_code"] == "test.correctness"
+            and item["request"]["parameters"]["test_version"] == test_version
+            and item["request"]["parameters"]["case_version"] == case_version
+        ]
+        if existing:
+            operation = existing[-1]
+            if operation["state"] in {"completed", "failed", "cancelled"}:
+                base["evidence_operations"] = self.database.recent_evidence_operations(
+                    operator_id=operator_id,
+                    expected_consumer=role,
+                )
+                return base
+            raise EvidenceOperationPending(operation)
+        outcome = {
+            "schema": AGENT_ACTION_OUTCOME_SCHEMA,
+            "action_id": str(previous_action["action_id"]),
+            "execution_status": "completed",
+            "disposition": "request_evidence",
+            "failure_class": None,
+            "summary": (
+                "daemon context completeness scheduled the missing comparable result"
+            ),
+            "outputs": [],
+            "evidence_refs": [],
+            "requested_operation": {
+                "operation_code": "test.correctness",
+                "parameters": {
+                    "candidate_id": test_version,
+                    "test_version": test_version,
+                    "case_version": case_version,
+                },
+                "expected_consumer": "solver",
+                "resume_condition": (
+                    "a comparable correctness result is indexed for the exact "
+                    "candidate and case version"
+                ),
+            },
+            "blocker": None,
+            "completed_at": _utc_now(),
+        }
+        operation = EvidenceOperationCoordinator(
+            self.root,
+            self.database,
+        ).register(previous_action, outcome)
+        if operation is None:
+            raise ValueError("context completeness did not create evidence operation")
+        raise EvidenceOperationPending(operation)
 
 
 def _next_candidate_version(
@@ -319,7 +453,18 @@ def _next_candidate_version(
         for item in database.agent_actions_v4()
         if item["operator_id"] == operator_id and item["role"] == role
     ]
-    candidates = [path.name for path in (root / "operators_workspace" / operator).glob(f"{operator}_V*")]
+    candidate_roots = (
+        root / "operators_workspace" / operator,
+        root / "TestUtils" / "pending" / operator,
+        root / "operators_testresult" / operator,
+        root / "operators_finish" / operator,
+    )
+    candidates = [
+        path.name
+        for candidate_root in candidate_roots
+        for path in candidate_root.glob(f"{operator}_V*")
+        if path.is_dir()
+    ]
     versions: list[tuple[int, int]] = []
     pattern = re.compile(rf"{re.escape(operator)}_V(\d+)(?:_(\d+))?", re.IGNORECASE)
     for value in (*candidates, *existing):
@@ -330,6 +475,38 @@ def _next_candidate_version(
         return f"{operator}_V1_1"
     major, minor = max(versions)
     return f"{operator}_V{major}_{minor + 1}"
+
+
+def _next_action_causation(
+    evidence_operations: list[dict[str, Any]],
+) -> dict[str, Any]:
+    completed = [
+        item
+        for item in evidence_operations
+        if str(item.get("state") or "") in {"completed", "failed", "cancelled"}
+        and isinstance(item.get("result"), dict)
+    ]
+    if not completed:
+        return {}
+    latest = completed[0]
+    request = dict(latest.get("request") or {})
+    origin = dict(request.get("origin") or {})
+    route = dict(latest.get("route") or {})
+    result = dict(latest.get("result") or {})
+    origin_action_id = str(origin.get("action_id") or "")
+    return {
+        "trace_id": origin_action_id
+        or str(latest.get("operation_request_id") or ""),
+        "parent_action_id": origin_action_id,
+        "operation_request_id": str(
+            latest.get("operation_request_id") or ""
+        ),
+        "operation_result_id": str(
+            result.get("operation_result_id") or ""
+        ),
+        "request_id": str(route.get("test_request_id") or ""),
+        "attempt_id": str(route.get("wire_attempt_id") or ""),
+    }
 
 
 def _board_case_version(next_command: str, *, role: str) -> str:
@@ -359,6 +536,14 @@ def _pending_repair_version(contracts: list[dict[str, Any]]) -> str:
 
 
 def _workflow_evidence_version(contracts: list[dict[str, Any]]) -> str:
+    if not contracts or any(not bool(contract.get("required")) for contract in contracts):
+        return ""
+    if any(
+        contract.get("output_kind")
+        not in {"solver-blocker", "solver-diagnostic-request"}
+        for contract in contracts
+    ):
+        return ""
     for contract in contracts:
         if contract.get("output_kind") not in {
             "solver-blocker",
@@ -383,6 +568,27 @@ def _agent_pool_id(registration: dict[str, Any], *, role: str) -> str:
             f"operator {registration.get('display_name', '')} has no {role} Agent pool"
         )
     return pool_id
+
+
+def _candidate_submit_root(
+    root: Path,
+    operator: str,
+    test_version: str,
+) -> Path | None:
+    if not test_version:
+        return None
+    candidates = (
+        root
+        / "operators_testresult"
+        / operator
+        / test_version
+        / "submit_snapshot",
+        root / "TestUtils" / "submit" / operator / test_version,
+    )
+    return next(
+        (path.resolve() for path in candidates if (path / "SUBMIT.md").is_file()),
+        None,
+    )
 
 
 def _utc_now() -> str:

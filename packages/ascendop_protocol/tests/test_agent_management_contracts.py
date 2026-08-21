@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 import ascendop_protocol
 
 import pytest
@@ -12,8 +14,11 @@ from ascendop_protocol.agent import (
     AGENT_POOL_SCHEMA,
     AGENT_REGISTRATION_SCHEMA,
     AGENT_TURN_DELIVERY_SCHEMA,
+    AGENT_TURN_DELIVERY_V2_SCHEMA,
+    AGENT_TURN_COMPLETION_SCHEMA,
     AGENT_WORK_LEASE_SCHEMA,
     AgentContractError,
+    agent_turn_delivery_identity,
     validate_agent_action,
     validate_agent_context_snapshot,
     validate_agent_output_contract,
@@ -21,7 +26,9 @@ from ascendop_protocol.agent import (
     validate_agent_pool,
     validate_agent_registration,
     validate_agent_turn_delivery,
+    validate_agent_turn_completion,
 )
+from ascendop_protocol.actor import build_v5_prompt_context
 from ascendop_protocol.management import (
     CONTROL_COMMAND_SCHEMA,
     ManagementContractError,
@@ -89,7 +96,9 @@ def test_agent_contracts_are_registered_and_validate() -> None:
         "target_id": "task-1",
         "workspace": ".ascendop-work/agent-runs/act-1/workspace",
         "prompt": "perform the immutable action",
-        "prompt_digest": DIGEST,
+        "prompt_digest": hashlib.sha256(
+            b"perform the immutable action"
+        ).hexdigest(),
         "action": action,
         "context": snapshot,
         "lease": {
@@ -110,6 +119,58 @@ def test_agent_contracts_are_registered_and_validate() -> None:
         "created_at": "2026-08-08T00:00:00+00:00",
     }
     assert validate_agent_turn_delivery(delivery) == delivery
+    assert agent_turn_delivery_identity(delivery) == {
+        "action_id": "act-1",
+        "attempt_id": "attempt-1",
+        "delivery_key": "act-1:attempt-1",
+        "delivery_marker": "ASCENDOP_AGENT_ACTION=act-1 ATTEMPT=attempt-1",
+    }
+    delivery_v2 = {
+        **delivery,
+        "schema": AGENT_TURN_DELIVERY_V2_SCHEMA,
+        "action_context": build_v5_prompt_context(
+            action,
+            snapshot,
+            {
+                "attempt_id": "attempt-1",
+                "ordinal": 1,
+                "mode": "initial",
+                "history": [],
+                "output_repair": None,
+            },
+        ),
+    }
+    assert validate_agent_turn_delivery(delivery_v2) == delivery_v2
+    completion = {
+        "schema": AGENT_TURN_COMPLETION_SCHEMA,
+        "action_id": "act-1",
+        "attempt_id": "attempt-1",
+        "delivery_key": "act-1:attempt-1",
+        "delivery_marker": "ASCENDOP_AGENT_ACTION=act-1 ATTEMPT=attempt-1",
+        "target_id": "task-1",
+        "turn_id": "turn-1",
+        "terminal_status": "completed",
+        "structured_result": {
+            "schema": "ascendop.agent-action-outcome.v1",
+            "action_id": "act-1",
+            "execution_status": "completed",
+            "disposition": "no_change_with_evidence",
+            "failure_class": None,
+            "summary": "No safe change is justified by the current evidence.",
+            "outputs": [],
+            "evidence_refs": ["evidence/result.md"],
+            "requested_operation": None,
+            "blocker": None,
+            "completed_at": "2026-08-08T00:01:00+00:00",
+        },
+        "output_error": "",
+        "observed_at": "2026-08-08T00:01:01+00:00",
+    }
+    assert validate_agent_turn_completion(completion) == completion
+    with pytest.raises(AgentContractError, match="delivery marker changed"):
+        validate_agent_turn_completion(
+            {**completion, "delivery_marker": "ASCENDOP_AGENT_ACTION=act-1"}
+        )
 
     ids = {entry["schema_id"] for entry in schema_registry()["entries"]}
     for schema_id in (
@@ -119,6 +180,8 @@ def test_agent_contracts_are_registered_and_validate() -> None:
         AGENT_OUTPUT_CONTRACT_SCHEMA,
         AGENT_CONTEXT_SNAPSHOT_SCHEMA,
         AGENT_TURN_DELIVERY_SCHEMA,
+        AGENT_TURN_DELIVERY_V2_SCHEMA,
+        AGENT_TURN_COMPLETION_SCHEMA,
         CONTROL_COMMAND_SCHEMA,
     ):
         assert schema_id in ids
@@ -192,6 +255,10 @@ def test_solver_candidate_proposal_is_typed_and_evidence_bearing() -> None:
     }
 
     assert validate_solver_candidate_proposal(proposal) == proposal
+    proposal["proposal_key"] = "transport-only"
+    with pytest.raises(ValueError, match="unknown=\\['proposal_key'\\]"):
+        validate_solver_candidate_proposal(proposal)
+    proposal.pop("proposal_key")
     proposal["consulted_evidence"] = []
     with pytest.raises(ValueError, match="must not be empty"):
         validate_solver_candidate_proposal(proposal)

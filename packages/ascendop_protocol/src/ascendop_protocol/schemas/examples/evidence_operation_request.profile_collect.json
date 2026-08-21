@@ -1,0 +1,24 @@
+{
+  "schema": "ascendop.evidence-operation-request.v1",
+  "operation_request_id": "eor-demo-profile-1",
+  "idempotency_key": "evidence:actor-action-demo-1:profile.collect:Demo_V1_1:case_v001",
+  "registry_generation": "flow-v5-evidence-operations-v1",
+  "registry_digest": "4e757a33a1c2184a3f9ad7434203189e510ce7ab4fccfedf2b9e6496e2672c62",
+  "operation_code": "profile.collect",
+  "origin": {
+    "action_id": "actor-action-demo-1",
+    "iteration_id": "iteration-demo-1",
+    "operator_id": "Demo",
+    "role": "solver"
+  },
+  "expected_consumer": "solver",
+  "parameters": {
+    "candidate_id": "candidate-demo-1",
+    "test_version": "Demo_V1_1",
+    "case_version": "case_v001",
+    "profiler_mode": "primary-all-cases"
+  },
+  "resume_condition": "profiler evidence is indexed for Demo_V1_1",
+  "state": "queued",
+  "created_at": "2026-08-19T00:00:00Z"
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.manager-notification.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "notification_id", "notification_kind", "flow_id", "operator_id", "summary", "requires_response", "evidence_refs", "allowed_commands", "state", "created_at"],
+  "properties": {
+    "schema": {"const": "ascendop.manager-notification.v1"},
+    "notification_id": {"type": "string", "minLength": 1},
+    "notification_kind": {"enum": ["user_decision", "external_hold", "capability_gap"]},
+    "flow_id": {"type": "string", "minLength": 1},
+    "operator_id": {"type": "string", "minLength": 1},
+    "summary": {"type": "string", "minLength": 1},
+    "requires_response": {"type": "boolean"},
+    "evidence_refs": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "allowed_commands": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "state": {"type": "string", "minLength": 1},
+    "created_at": {"type": "string", "minLength": 1}
+  }
+}

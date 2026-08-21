@@ -17,6 +17,9 @@ from ascendop_daemon.registry.system_registry import SystemRegistry
 from ascendop_daemon.workflow.cannjudge_result_adapter import (
     CannJudgeV3ResultAdapter,
 )
+from ascendop_daemon.workflow.evidence_operation_result_router import (
+    EvidenceOperationResultRouter,
+)
 from ascendop_daemon.workflow.workspace_result_collector import (
     WorkspaceResultCollector,
 )
@@ -49,7 +52,11 @@ def build_dispatcher_pool(
         )
     result_collector = WorkspaceResultCollector(
         root,
-        workflow_ingestor=CannJudgeV3ResultAdapter(root),
+        workflow_ingestor=EvidenceOperationResultRouter(
+            root,
+            database,
+            delegate=CannJudgeV3ResultAdapter(root),
+        ),
     )
     selected = [
         endpoint

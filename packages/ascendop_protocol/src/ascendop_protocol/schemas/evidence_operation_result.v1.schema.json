@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.evidence-operation-result.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "operation_result_id", "operation_request_id", "registry_generation", "registry_digest", "operation_code", "origin", "expected_consumer", "status", "execution", "evidence", "summary", "failure_class", "completed_at"],
+  "properties": {
+    "schema": {"const": "ascendop.evidence-operation-result.v1"},
+    "operation_result_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "operation_request_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "registry_generation": {"type": "string", "minLength": 1},
+    "registry_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "operation_code": {"enum": ["test.correctness", "test.performance", "profile.collect", "profile.compare", "correctness.replay", "environment.conformance", "artifact.recover"]},
+    "origin": {"$ref": "#/$defs/origin"},
+    "expected_consumer": {"enum": ["assistant", "developer", "manager", "solver", "tester"]},
+    "status": {"enum": ["completed", "failed", "cancelled"]},
+    "execution": {"$ref": "#/$defs/execution"},
+    "evidence": {"type": "object"},
+    "summary": {"type": "string", "minLength": 1},
+    "failure_class": {"type": ["string", "null"]},
+    "completed_at": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {"if": {"properties": {"operation_code": {"const": "test.correctness"}}}, "then": {"properties": {"evidence": {"$ref": "#/$defs/correctness_report"}}}},
+    {"if": {"properties": {"operation_code": {"const": "test.performance"}}}, "then": {"properties": {"evidence": {"$ref": "#/$defs/performance_report"}}}},
+    {"if": {"properties": {"operation_code": {"const": "profile.collect"}}}, "then": {"properties": {"evidence": {"$ref": "#/$defs/profiler_trace"}}}},
+    {"if": {"properties": {"operation_code": {"const": "profile.compare"}}}, "then": {"properties": {"evidence": {"$ref": "#/$defs/profile_comparison"}}}},
+    {"if": {"properties": {"operation_code": {"const": "correctness.replay"}}}, "then": {"properties": {"evidence": {"$ref": "#/$defs/correctness_replay_report"}}}},
+    {"if": {"properties": {"operation_code": {"const": "environment.conformance"}}}, "then": {"properties": {"evidence": {"$ref": "#/$defs/environment_conformance_report"}}}},
+    {"if": {"properties": {"operation_code": {"const": "artifact.recover"}}}, "then": {"properties": {"evidence": {"$ref": "#/$defs/artifact_recovery_receipt"}}}}
+  ],
+  "$defs": {
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action_id", "iteration_id", "operator_id", "role"],
+      "properties": {
+        "action_id": {"type": "string", "minLength": 1},
+        "iteration_id": {"type": "string", "minLength": 1},
+        "operator_id": {"type": "string", "minLength": 1},
+        "role": {"enum": ["assistant", "developer", "manager", "solver", "tester"]}
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["test_request_id", "wire_attempt_id", "endpoint_id", "execution_environment_id"],
+      "properties": {
+        "test_request_id": {"type": "string"},
+        "wire_attempt_id": {"type": "string"},
+        "endpoint_id": {"type": "string"},
+        "execution_environment_id": {"type": "string"}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence_type", "artifact_refs", "payload"],
+      "properties": {
+        "evidence_type": {"type": "string", "minLength": 1},
+        "artifact_refs": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "payload": {"type": "object"}
+      }
+    },
+    "correctness_report": {"allOf": [{"$ref": "#/$defs/evidence"}, {"properties": {"evidence_type": {"const": "correctness-report"}}}]},
+    "performance_report": {"allOf": [{"$ref": "#/$defs/evidence"}, {"properties": {"evidence_type": {"const": "performance-report"}}}]},
+    "profiler_trace": {"allOf": [{"$ref": "#/$defs/evidence"}, {"properties": {"evidence_type": {"const": "profiler-trace"}}}]},
+    "profile_comparison": {"allOf": [{"$ref": "#/$defs/evidence"}, {"properties": {"evidence_type": {"const": "profile-comparison"}}}]},
+    "correctness_replay_report": {"allOf": [{"$ref": "#/$defs/evidence"}, {"properties": {"evidence_type": {"const": "correctness-replay-report"}}}]},
+    "environment_conformance_report": {"allOf": [{"$ref": "#/$defs/evidence"}, {"properties": {"evidence_type": {"const": "environment-conformance-report"}}}]},
+    "artifact_recovery_receipt": {"allOf": [{"$ref": "#/$defs/evidence"}, {"properties": {"evidence_type": {"const": "artifact-recovery-receipt"}}}]}
+  }
+}

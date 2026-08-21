@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.agent-turn-completion.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "action_id",
+    "attempt_id",
+    "delivery_key",
+    "delivery_marker",
+    "target_id",
+    "turn_id",
+    "terminal_status",
+    "structured_result",
+    "output_error",
+    "observed_at"
+  ],
+  "properties": {
+    "schema": {"const": "ascendop.agent-turn-completion.v1"},
+    "action_id": {"type": "string", "minLength": 1},
+    "attempt_id": {"type": "string", "minLength": 1},
+    "delivery_key": {"type": "string", "minLength": 1},
+    "delivery_marker": {"type": "string", "minLength": 1},
+    "target_id": {"type": "string", "minLength": 1},
+    "turn_id": {"type": "string", "minLength": 1},
+    "terminal_status": {
+      "enum": ["completed", "failed", "interrupted", "cancelled", "uncertain"]
+    },
+    "structured_result": {"type": "object"},
+    "output_error": {"type": "string"},
+    "observed_at": {"type": "string", "minLength": 1}
+  }
+}

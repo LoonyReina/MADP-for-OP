@@ -46,7 +46,10 @@ ACTION_OPERATIONS: dict[ActionKind, set[str]] = {
     ActionKind.HEARTBEAT_ACTIVE_REQUEST: {"gitpartner-heartbeat"},
     ActionKind.CANCEL_STALLED_REQUEST: {"gitpartner-cancel-stalled"},
     ActionKind.COLLECT_PROFILER_EVIDENCE: {"collect-profiler-evidence"},
-    ActionKind.REGISTER_SOLVER_DIAGNOSTIC: {"register-solver-diagnostic"},
+    ActionKind.REGISTER_SOLVER_DIAGNOSTIC: {
+        "register-solver-diagnostic",
+        "retry-solver-diagnostic",
+    },
     ActionKind.PUBLISH_TEST_REQUEST: {"publish-test-request"},
 }
 
@@ -149,6 +152,12 @@ def parse_typed_harness_arguments(decision: GateDecision) -> dict[str, Any]:
 
 def _test_version(arguments: dict[str, Any]) -> str:
     positional = arguments.get("positional", [])
+    if (
+        str(arguments.get("operation") or "")
+        in {"register-solver-diagnostic", "retry-solver-diagnostic"}
+        and len(positional) > 2
+    ):
+        return str(positional[2])
     if len(positional) > 1:
         return str(positional[1])
     options = arguments.get("options", {})

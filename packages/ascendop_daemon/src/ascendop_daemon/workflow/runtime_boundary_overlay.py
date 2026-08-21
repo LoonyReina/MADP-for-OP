@@ -16,6 +16,7 @@ _TRACE_HELPER = r"""
 // ASCENDOP_RUNTIME_BOUNDARY_TRACE_OVERLAY_V2
 #include <chrono>
 #include <cstdlib>
+#include <exception>
 #include <execinfo.h>
 #include <fstream>
 #include <iomanip>
@@ -190,20 +191,29 @@ def apply_runtime_boundary_overlay(
     ]
     patched: list[dict[str, str]] = []
     aclnn_helper_traced = False
+    native_emitters: list[str] = []
     for path in candidates:
         if not path.is_file():
             continue
         before = path.read_text(encoding="utf-8")
         if TRACE_MARKER in before:
+            if native_attribution and "workspace-query-native-enter" not in before:
+                raise EngineJobBuildError(
+                    "runtime boundary overlay predates requested native workspace "
+                    f"attribution: {path.relative_to(task_case).as_posix()}"
+                )
             after = before
             adapter = "already-instrumented"
             aclnn_helper_traced = aclnn_helper_traced or path.name == (
                 "pytorch_npu_helper.hpp"
             )
+            if "workspace-query-native-enter" in before:
+                native_emitters.append(path.relative_to(task_case).as_posix())
         elif path.name == "pytorch_npu_helper.hpp" and "#define EXEC_NPU_CMD" in before:
             after = _instrument_aclnn_helper(before)
             adapter = "aclnn-workspace-executor-v1"
             aclnn_helper_traced = True
+            native_emitters.append(path.relative_to(task_case).as_posix())
         elif (
             path.name == "custom_op.cpp"
             and aclnn_helper_traced
@@ -213,8 +223,17 @@ def apply_runtime_boundary_overlay(
             after = _instrument_aclnn_wrapper(before)
             adapter = "aclnn-wrapper-allocation-v1"
         elif path.name == "custom_op.cpp" and "OpCommand" in before:
-            after = _instrument_opcommand_wrapper(before)
-            adapter = "opcommand-run-v1"
+            after = _instrument_opcommand_wrapper(
+                before,
+                native_attribution=native_attribution,
+            )
+            adapter = (
+                "opcommand-native-attribution-v1"
+                if native_attribution
+                else "opcommand-run-v1"
+            )
+            if native_attribution:
+                native_emitters.append(path.relative_to(task_case).as_posix())
         else:
             continue
         if after != before:
@@ -229,6 +248,10 @@ def apply_runtime_boundary_overlay(
         raise EngineJobBuildError(
             "runtime-boundary-trace found no supported ACLNN or OpCommand wrapper"
         )
+    if native_attribution and not native_emitters:
+        raise EngineJobBuildError(
+            "native-workspace-query-attribution found no supported native emitter"
+        )
     audit = {
         "schema": "ascendop.runtime-boundary-overlay.v2",
         "flags": [
@@ -236,6 +259,22 @@ def apply_runtime_boundary_overlay(
             *([NATIVE_WORKSPACE_QUERY_ATTRIBUTION_FLAG] if native_attribution else []),
         ],
         "patched": patched,
+        "capability_attestation": {
+            TRACE_FLAG: {
+                "status": "implemented",
+                "emitters": [item["path"] for item in patched],
+            },
+            **(
+                {
+                    NATIVE_WORKSPACE_QUERY_ATTRIBUTION_FLAG: {
+                        "status": "implemented",
+                        "emitters": native_emitters,
+                    }
+                }
+                if native_attribution
+                else {}
+            ),
+        },
         "task_case_sha256": tree_digest(task_case),
     }
     (task_case / "ASCENDOP_RUNTIME_BOUNDARY_OVERLAY.json").write_text(
@@ -387,7 +426,9 @@ def _macro_boundary(lines: list[str], marker: str, before: str, after: str) -> N
         lines.insert(index + 1, f"{indent}{after:<72}\\")
 
 
-def _instrument_opcommand_wrapper(text: str) -> str:
+def _instrument_opcommand_wrapper(
+    text: str, *, native_attribution: bool
+) -> str:
     include_end = text.find("\n\n")
     if include_end < 0:
         raise EngineJobBuildError("runtime boundary OpCommand include block is invalid")
@@ -414,46 +455,73 @@ def _instrument_opcommand_wrapper(text: str) -> str:
         and i not in run_indexes
         and i not in direct_run_indexes
     ]
-    for index in reversed(run_indexes):
-        previous = index - 1
-        while previous >= 0 and not lines[previous].strip():
-            previous -= 1
-        if previous < 0:
-            raise EngineJobBuildError("runtime boundary OpCommand chain is invalid")
-        lines[previous] = lines[previous].rstrip() + ";"
-        command_indent = " " * 8
-        for search in range(index - 1, -1, -1):
-            if "cmd.Name(" in lines[search]:
-                command_indent = lines[search][
-                    : len(lines[search]) - len(lines[search].lstrip())
-                ]
-                break
-        lines[index : index + 1] = [
-            f'{command_indent}AscendopRuntimeBoundaryTrace("opcommand-run-enter");',
-            f"{command_indent}cmd.Run();",
-            f'{command_indent}AscendopRuntimeBoundaryTrace("opcommand-run-return");',
-        ]
-    for index in reversed(direct_run_indexes):
-        if any(abs(index - other) <= 2 for other in run_indexes):
-            continue
-        indent = lines[index][: len(lines[index]) - len(lines[index].lstrip())]
-        lines.insert(
-            index, f'{indent}AscendopRuntimeBoundaryTrace("opcommand-run-enter");'
-        )
-        lines.insert(
-            index + 2, f'{indent}AscendopRuntimeBoundaryTrace("opcommand-run-return");'
-        )
-    for index in reversed(inline_run_indexes):
-        indent = lines[index][: len(lines[index]) - len(lines[index].lstrip())]
-        lines.insert(
-            index, f'{indent}AscendopRuntimeBoundaryTrace("opcommand-run-enter");'
-        )
-        lines.insert(
-            index + 2, f'{indent}AscendopRuntimeBoundaryTrace("opcommand-run-return");'
-        )
     if not run_indexes and not direct_run_indexes and not inline_run_indexes:
         raise EngineJobBuildError("runtime boundary OpCommand Run marker is missing")
+    kinds = {
+        **{index: "chain" for index in run_indexes},
+        **{index: "direct" for index in direct_run_indexes},
+        **{index: "inline" for index in inline_run_indexes},
+    }
+    for index in sorted(kinds, reverse=True):
+        kind = kinds[index]
+        indent = lines[index][: len(lines[index]) - len(lines[index].lstrip())]
+        statement = lines[index].strip()
+        if kind == "chain":
+            previous = index - 1
+            while previous >= 0 and not lines[previous].strip():
+                previous -= 1
+            if previous < 0:
+                raise EngineJobBuildError("runtime boundary OpCommand chain is invalid")
+            lines[previous] = lines[previous].rstrip() + ";"
+            statement = "cmd.Run();"
+            for search in range(index - 1, -1, -1):
+                if "cmd.Name(" in lines[search]:
+                    indent = lines[search][
+                        : len(lines[search]) - len(lines[search].lstrip())
+                    ]
+                    break
+        lines[index : index + 1] = _opcommand_run_block(
+            indent,
+            statement,
+            native_attribution=native_attribution,
+        )
     return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+
+
+def _opcommand_run_block(
+    indent: str,
+    statement: str,
+    *,
+    native_attribution: bool,
+) -> list[str]:
+    lines = [f'{indent}AscendopRuntimeBoundaryTrace("opcommand-run-enter");']
+    if not native_attribution:
+        return [
+            *lines,
+            f"{indent}{statement}",
+            f'{indent}AscendopRuntimeBoundaryTrace("opcommand-run-return");',
+        ]
+    operation = "OpCommand::Run"
+    lines.extend(
+        [
+            f'{indent}AscendopRuntimeWorkspaceQueryAttribution("workspace-query-native-enter", "{operation}");',
+            f"{indent}try {{",
+            f"{indent}  {statement}",
+            f"{indent}}} catch (const std::bad_alloc &ascendop_exception) {{",
+            f'{indent}  AscendopRuntimeWorkspaceQueryAttribution("workspace-query-native-exception", "{operation}", 0, "std::bad_alloc", ascendop_exception.what());',
+            f"{indent}  throw;",
+            f"{indent}}} catch (const std::exception &ascendop_exception) {{",
+            f'{indent}  AscendopRuntimeWorkspaceQueryAttribution("workspace-query-native-exception", "{operation}", 0, "std::exception", ascendop_exception.what());',
+            f"{indent}  throw;",
+            f"{indent}}} catch (...) {{",
+            f'{indent}  AscendopRuntimeWorkspaceQueryAttribution("workspace-query-native-exception", "{operation}", 0, "unknown", "non-std exception");',
+            f"{indent}  throw;",
+            f"{indent}}}",
+            f'{indent}AscendopRuntimeWorkspaceQueryAttribution("workspace-query-native-return", "{operation}");',
+            f'{indent}AscendopRuntimeBoundaryTrace("opcommand-run-return");',
+        ]
+    )
+    return lines
 
 
 __all__ = [

@@ -74,14 +74,16 @@ def test_publication_scan_passes() -> None:
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
-def test_flow_v4_provenance_matches_public_core_trees() -> None:
+def test_current_provenance_matches_public_core_trees() -> None:
     manifest = json.loads(
         (ROOT / "publication" / "core-manifest.json").read_text(encoding="utf-8")
     )
+    current = json.loads(
+        (ROOT / "release" / "CURRENT.json").read_text(encoding="utf-8")
+    )
+    provenance_path = ROOT / str(current["provenance_path"])
     provenance = json.loads(
-        (ROOT / "release" / "flow-v4" / "PROVENANCE.json").read_text(
-            encoding="utf-8"
-        )
+        provenance_path.read_text(encoding="utf-8")
     )
     excluded_names = set(manifest["excluded_names"])
     excluded_suffixes = {value.lower() for value in manifest["excluded_suffixes"]}

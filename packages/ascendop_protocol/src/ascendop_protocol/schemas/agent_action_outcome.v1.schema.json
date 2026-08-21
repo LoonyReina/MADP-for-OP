@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.agent-action-outcome.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "action_id", "execution_status", "disposition", "failure_class", "summary", "outputs", "evidence_refs", "requested_operation", "blocker", "completed_at"],
+  "properties": {
+    "schema": {"const": "ascendop.agent-action-outcome.v1"},
+    "action_id": {"type": "string", "minLength": 1},
+    "execution_status": {"enum": ["completed", "failed", "cancelled", "uncertain"]},
+    "disposition": {"enum": ["proposed_change", "no_change_with_evidence", "request_evidence", "blocked_external", "protocol_gap", null]},
+    "failure_class": {"enum": ["protocol_violation", "adapter_execution", "authentication", "cancelled", "uncertain_delivery", null]},
+    "summary": {"type": "string", "minLength": 1},
+    "outputs": {"type": "array", "items": {"$ref": "#/$defs/output"}},
+    "evidence_refs": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "requested_operation": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/requested_operation"}]},
+    "blocker": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/blocker"}]},
+    "completed_at": {"type": "string", "minLength": 1}
+  },
+  "$defs": {
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["output_id", "output_kind", "artifact_ref", "sha256"],
+      "properties": {
+        "output_id": {"type": "string", "minLength": 1},
+        "output_kind": {"enum": ["source-change", "pending-evidence-repair", "solver-blocker", "solver-candidate-proposal", "solver-diagnostic-request"]},
+        "artifact_ref": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "requested_operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation_code", "parameters", "expected_consumer", "resume_condition"],
+      "properties": {
+        "operation_code": {"enum": ["test.correctness", "test.performance", "profile.collect", "profile.compare", "correctness.replay", "environment.conformance", "artifact.recover"]},
+        "parameters": {"type": "object"},
+        "expected_consumer": {"enum": ["assistant", "developer", "manager", "solver", "tester"]},
+        "resume_condition": {"type": "string", "minLength": 1}
+      }
+    },
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "code", "details", "resume_condition"],
+      "properties": {
+        "kind": {"enum": ["capability_gap", "external_dependency", "user_policy_decision"]},
+        "code": {"type": "string", "minLength": 1},
+        "details": {"type": "string", "minLength": 1},
+        "resume_condition": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

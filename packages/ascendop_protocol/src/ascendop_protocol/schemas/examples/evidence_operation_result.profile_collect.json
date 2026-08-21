@@ -1,0 +1,30 @@
+{
+  "schema": "ascendop.evidence-operation-result.v1",
+  "operation_result_id": "eors-demo-profile-1",
+  "operation_request_id": "eor-demo-profile-1",
+  "registry_generation": "flow-v5-evidence-operations-v1",
+  "registry_digest": "4e757a33a1c2184a3f9ad7434203189e510ce7ab4fccfedf2b9e6496e2672c62",
+  "operation_code": "profile.collect",
+  "origin": {
+    "action_id": "actor-action-demo-1",
+    "iteration_id": "iteration-demo-1",
+    "operator_id": "Demo",
+    "role": "solver"
+  },
+  "expected_consumer": "solver",
+  "status": "completed",
+  "execution": {
+    "test_request_id": "request-demo-1",
+    "wire_attempt_id": "attempt-demo-1",
+    "endpoint_id": "endpoint-demo-1",
+    "execution_environment_id": "env-demo-1"
+  },
+  "evidence": {
+    "evidence_type": "profiler-trace",
+    "artifact_refs": ["operators_testresult/Demo/Demo_V1_1/profiler.json"],
+    "payload": {"case_count": 4, "profiler_mode": "primary-all-cases"}
+  },
+  "summary": "Profiler evidence collected and indexed.",
+  "failure_class": null,
+  "completed_at": "2026-08-19T00:10:00Z"
+}

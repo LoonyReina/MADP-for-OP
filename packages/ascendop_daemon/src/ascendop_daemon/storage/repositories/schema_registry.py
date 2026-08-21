@@ -221,6 +221,13 @@ class SchemaRegistryRepository:
 
     def reconcile(self, config: DaemonConfig, registry: SystemRegistry) -> dict[str, Any]:
         self.initialize()
+        for registration in registry.actor_registrations:
+            self.register_agent(
+                registration,
+                health_state="ready",
+                manager_runner_id="flow-v5-role-binding",
+                lease_seconds=300,
+            )
         now = utc_now()
         operators = registry.compile_operators(config)
         with self.transaction() as conn:
@@ -492,6 +499,8 @@ class SchemaRegistryRepository:
                     "endpoints": len(registry.endpoints),
                 },
             )
+        for binding in registry.role_bindings:
+            self.upsert_role_binding(binding)
         return {
             "schema_version": SCHEMA_VERSION,
             "database": str(self.path),
@@ -501,6 +510,8 @@ class SchemaRegistryRepository:
                 1 for item in operators if item.desired_state == "enabled"
             ),
             "agent_pool_count": len(registry.agent_pools),
+            "actor_registration_count": len(registry.actor_registrations),
+            "role_binding_count": len(registry.role_bindings),
             "gateway_count": len(registry.gateways),
             "node_count": len(registry.nodes),
             "environment_count": len(registry.environments),

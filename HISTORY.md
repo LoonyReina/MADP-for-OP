@@ -35,3 +35,18 @@ Engine deployment, endpoint configuration, operators, and evaluation assets
 remain outside the public boundary.
 
 Tag: `archive-2026-08-16-flow-v4-core`.
+
+## 2026-08-21: Flow V5 preliminary core
+
+This preview introduces versioned role and action catalogs, Manager and
+Assistant authority contracts, adapter-neutral Agent execution and completion,
+attempt-scoped delivery identity, registered evidence operations, typed
+capability-gap routing, and multi-facet workflow projections.
+
+It is intentionally published before implementation of the standalone
+GP/Engine operator-test gateway. The preview preserves the public-core boundary
+and does not include endpoint bindings, live workflow state, operator assets,
+or official-evaluation implementation. It is a development checkpoint, not the
+final Flow V5 acceptance release.
+
+Tag: `preview-2026-08-21-flow-v5-core`.

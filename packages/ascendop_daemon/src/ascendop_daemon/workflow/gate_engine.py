@@ -63,6 +63,22 @@ class GateEngine:
                 action_descriptor=dict(row.action_descriptor),
             )
 
+        if gate == "needs-diagnostic-retry":
+            return GateDecision(
+                row=row,
+                action=ActionKind.REGISTER_SOLVER_DIAGNOSTIC,
+                reason=(
+                    "the same typed Solver diagnostic failed under an older "
+                    "Engine capability generation; authorize one CAS-scoped replay"
+                ),
+                command=extract_harness_command(
+                    command,
+                    "retry-solver-diagnostic",
+                ),
+                priority=75,
+                action_descriptor=dict(row.action_descriptor),
+            )
+
         if gate in {
             "diagnostic-evidence-ready",
             "diagnostic-evidence-running",

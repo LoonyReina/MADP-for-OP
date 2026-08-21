@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ascendop-agent-runner"
-version = "4.5.0"
+version = "5.4.3"
 description = "Provider-neutral, serialized Agent execution for MADP"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
-dependencies = ["ascendop-protocol==4.5.0", "ascendop-control==4.5.0"]
+dependencies = ["ascendop-protocol==5.4.3", "ascendop-control==5.4.3"]
 
 [project.scripts]
 ascendop-agent-runner = "ascendop_agent_runner.cli:main"

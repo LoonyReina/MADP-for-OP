@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.evidence-operation-request.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "operation_request_id", "idempotency_key", "registry_generation", "registry_digest", "operation_code", "origin", "expected_consumer", "parameters", "resume_condition", "state", "created_at"],
+  "properties": {
+    "schema": {"const": "ascendop.evidence-operation-request.v1"},
+    "operation_request_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "idempotency_key": {"type": "string", "minLength": 1},
+    "registry_generation": {"type": "string", "minLength": 1},
+    "registry_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "operation_code": {"enum": ["test.correctness", "test.performance", "profile.collect", "profile.compare", "correctness.replay", "environment.conformance", "artifact.recover"]},
+    "origin": {"$ref": "#/$defs/origin"},
+    "expected_consumer": {"enum": ["assistant", "developer", "manager", "solver", "tester"]},
+    "parameters": {"type": "object"},
+    "resume_condition": {"type": "string", "minLength": 1},
+    "state": {"enum": ["queued", "claimed", "routed", "running", "completed", "failed", "cancelled"]},
+    "created_at": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {"if": {"properties": {"operation_code": {"const": "test.correctness"}}}, "then": {"properties": {"parameters": {"$ref": "#/$defs/test_correctness"}}}},
+    {"if": {"properties": {"operation_code": {"const": "test.performance"}}}, "then": {"properties": {"parameters": {"$ref": "#/$defs/test_performance"}}}},
+    {"if": {"properties": {"operation_code": {"const": "profile.collect"}}}, "then": {"properties": {"parameters": {"$ref": "#/$defs/profile_collect"}}}},
+    {"if": {"properties": {"operation_code": {"const": "profile.compare"}}}, "then": {"properties": {"parameters": {"$ref": "#/$defs/profile_compare"}}}},
+    {"if": {"properties": {"operation_code": {"const": "correctness.replay"}}}, "then": {"properties": {"parameters": {"$ref": "#/$defs/correctness_replay"}}}},
+    {"if": {"properties": {"operation_code": {"const": "environment.conformance"}}}, "then": {"properties": {"parameters": {"$ref": "#/$defs/environment_conformance"}}}},
+    {"if": {"properties": {"operation_code": {"const": "artifact.recover"}}}, "then": {"properties": {"parameters": {"$ref": "#/$defs/artifact_recover"}}}}
+  ],
+  "$defs": {
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action_id", "iteration_id", "operator_id", "role"],
+      "properties": {
+        "action_id": {"type": "string", "minLength": 1},
+        "iteration_id": {"type": "string", "minLength": 1},
+        "operator_id": {"type": "string", "minLength": 1},
+        "role": {"enum": ["assistant", "developer", "manager", "solver", "tester"]}
+      }
+    },
+    "candidate_case": {
+      "type": "object",
+      "required": ["candidate_id", "test_version", "case_version"],
+      "properties": {
+        "candidate_id": {"type": "string", "minLength": 1},
+        "test_version": {"type": "string", "minLength": 1},
+        "case_version": {"type": "string", "minLength": 1}
+      }
+    },
+    "test_correctness": {
+      "allOf": [{"$ref": "#/$defs/candidate_case"}],
+      "type": "object",
+      "additionalProperties": true
+    },
+    "test_performance": {
+      "allOf": [{"$ref": "#/$defs/candidate_case"}],
+      "type": "object",
+      "required": ["baseline_result_id"],
+      "properties": {"baseline_result_id": {"type": "string", "minLength": 1}},
+      "additionalProperties": true
+    },
+    "profile_collect": {
+      "allOf": [{"$ref": "#/$defs/candidate_case"}],
+      "type": "object",
+      "required": ["profiler_mode"],
+      "properties": {"profiler_mode": {"type": "string", "minLength": 1}},
+      "additionalProperties": true
+    },
+    "profile_compare": {
+      "type": "object",
+      "required": ["baseline_evidence_ref", "candidate_evidence_ref", "comparison_rule"],
+      "properties": {
+        "baseline_evidence_ref": {"type": "string", "minLength": 1},
+        "candidate_evidence_ref": {"type": "string", "minLength": 1},
+        "comparison_rule": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": true
+    },
+    "correctness_replay": {
+      "allOf": [{"$ref": "#/$defs/candidate_case"}],
+      "type": "object",
+      "required": ["failing_cases"],
+      "properties": {
+        "failing_cases": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": ["string", "integer"]}}
+      },
+      "additionalProperties": true
+    },
+    "environment_conformance": {
+      "type": "object",
+      "required": ["endpoint_id", "execution_environment_id", "requirements_generation"],
+      "properties": {
+        "endpoint_id": {"type": "string", "minLength": 1},
+        "execution_environment_id": {"type": "string", "minLength": 1},
+        "requirements_generation": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": true
+    },
+    "artifact_recover": {
+      "type": "object",
+      "required": ["artifact_ref", "expected_sha256", "recovery_source"],
+      "properties": {
+        "artifact_ref": {"type": "string", "minLength": 1},
+        "expected_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "recovery_source": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": true
+    }
+  }
+}

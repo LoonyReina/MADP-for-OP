@@ -123,6 +123,10 @@ class NodeLifecycleRepository:
                 "SELECT state, COUNT(*) AS count FROM assistant_action_requests "
                 "GROUP BY state ORDER BY state"
             ).fetchall()
+            evidence_operation_rows = conn.execute(
+                "SELECT state, COUNT(*) AS count FROM evidence_operation_requests_v5 "
+                "GROUP BY state ORDER BY state"
+            ).fetchall()
             events = conn.execute(
                 "SELECT * FROM control_events ORDER BY sequence DESC LIMIT ?",
                 (max(0, int(event_limit)),),
@@ -145,6 +149,9 @@ class NodeLifecycleRepository:
             "nodes": [dict(row) for row in node_rows],
             "assistant_actions": {
                 row["state"]: row["count"] for row in assistant_action_rows
+            },
+            "evidence_operations": {
+                row["state"]: row["count"] for row in evidence_operation_rows
             },
             "services": self.service_health(),
             "events": [

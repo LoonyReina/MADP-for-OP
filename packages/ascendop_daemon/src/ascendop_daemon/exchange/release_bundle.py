@@ -3,12 +3,9 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
-import io
 import json
 import os
 import shutil
-import subprocess
-import sys
 import tarfile
 import tempfile
 from datetime import datetime, timezone
@@ -19,21 +16,23 @@ from ascendop_daemon.exchange.release_layout import (
     daemon_file_is_offline,
     daemon_offline_patterns,
 )
+from ascendop_daemon.exchange.release_bundle_validation import (
+    ReleaseBundleError,
+    validate_campaign_alignment as _validate_campaign_alignment,
+    validate_flow_v5_role_alignment as _validate_flow_v5_role_alignment,
+)
+from ascendop_daemon.exchange.release_engine_bundle import (
+    load_engine_manifest as _load_engine_manifest,
+    validate_engine_manifest as _validate_engine_manifest,
+    write_engine_archive as _write_engine_archive,
+)
 from ascendop_daemon.exchange.transport_installer import transport_generation
 from ascendop_daemon.registry.models import SystemRegistryError
 from ascendop_daemon.registry.system_registry import SystemRegistry
-from ascendop_daemon.runtime.process_adapter import (
-    process_creation_flags,
-    process_startupinfo,
-)
 from ascendop_daemon.storage.control_types import SCHEMA_VERSION
 
 
 RELEASE_SCHEMA = "ascendop.flow-release.v4"
-
-
-class ReleaseBundleError(RuntimeError):
-    pass
 
 
 def build_flow_release(
@@ -116,6 +115,15 @@ def build_flow_release(
         daemon_config=daemon_config,
         official_eval_config=official_eval_config,
     )
+    _validate_flow_v5_role_alignment(
+        daemon_config=daemon_config,
+        official_eval_config=official_eval_config,
+        system_registry=system_registry,
+    )
+    developer_runbook = _configured_developer_runbook(
+        workspace_root=workspace_root,
+        daemon_config=daemon_config,
+    )
     _validate_registered_endpoint_configs(
         gp_root=gp_root,
         system_registry=system_registry,
@@ -187,6 +195,10 @@ def build_flow_release(
         "workflow_adapter_sha256": _file_digest(workflow_adapter),
         "daemon_config_path": daemon_config.relative_to(workspace_root).as_posix(),
         "daemon_config_sha256": _file_digest(daemon_config),
+        "developer_runbook_path": developer_runbook.relative_to(
+            workspace_root
+        ).as_posix(),
+        "developer_runbook_sha256": _file_digest(developer_runbook),
         "system_registry_path": system_registry.relative_to(workspace_root).as_posix(),
         "system_registry_sha256": _file_digest(system_registry),
         "official_eval_config_path": official_eval_config.relative_to(
@@ -217,6 +229,7 @@ def build_flow_release(
     variable_registry_artifact = release_root / "variables.json"
     change_impact_policy_artifact = release_root / "change-impact-policy.json"
     daemon_config_artifact = release_root / "daemon-config.json"
+    developer_runbook_artifact = release_root / "developer-capability-runbook.md"
     system_registry_artifact = release_root / "system-registry.json"
     official_eval_config_artifact = release_root / "official-eval-config.json"
     official_eval_policy_index = release_root / "official-eval-policy-index.json"
@@ -305,6 +318,7 @@ def build_flow_release(
     _write_file_atomic(variable_registry, variable_registry_artifact)
     _write_file_atomic(change_impact_policy, change_impact_policy_artifact)
     _write_file_atomic(daemon_config, daemon_config_artifact)
+    _write_file_atomic(developer_runbook, developer_runbook_artifact)
     _write_file_atomic(system_registry, system_registry_artifact)
     _write_file_atomic(official_eval_config, official_eval_config_artifact)
     _write_json_atomic(
@@ -375,6 +389,10 @@ def build_flow_release(
                 "path": daemon_config_artifact.name,
                 "sha256": _file_digest(daemon_config_artifact),
             },
+            "developer_runbook": {
+                "path": developer_runbook_artifact.name,
+                "sha256": _file_digest(developer_runbook_artifact),
+            },
             "system_registry": {
                 "path": system_registry_artifact.name,
                 "sha256": _file_digest(system_registry_artifact),
@@ -397,6 +415,33 @@ def build_flow_release(
     manifest_path = release_root / "RELEASE.json"
     _write_json_atomic(manifest_path, manifest)
     return {**manifest, "manifest_path": str(manifest_path)}
+
+
+def _configured_developer_runbook(
+    *,
+    workspace_root: Path,
+    daemon_config: Path,
+) -> Path:
+    try:
+        config = json.loads(daemon_config.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ReleaseBundleError("daemon config is not valid JSON") from exc
+    policy = config.get("policy") if isinstance(config, dict) else None
+    value = policy.get("flow_v5_developer_runbook_path") if isinstance(policy, dict) else None
+    if not isinstance(value, str) or not value.strip():
+        raise ReleaseBundleError(
+            "daemon config does not define flow_v5_developer_runbook_path"
+        )
+    relative = Path(value.strip())
+    if relative.is_absolute():
+        raise ReleaseBundleError("Developer runbook path must be workspace-relative")
+    runbook = (workspace_root / relative).resolve()
+    _require_child(workspace_root, runbook, "Developer runbook")
+    if not runbook.is_file() or runbook.is_symlink():
+        raise ReleaseBundleError(
+            f"Developer runbook is missing or unsafe: {runbook}"
+        )
+    return runbook
 
 
 def _transport_files(root: Path) -> tuple[Path, ...]:
@@ -799,160 +844,6 @@ def _write_mapped_archive(
         temporary.unlink(missing_ok=True)
 
 
-def _load_engine_manifest(gp_root: Path, protocol_root: Path) -> dict[str, object]:
-    script = (
-        gp_root
-        / "src"
-        / "limited_remote_partner"
-        / "engine"
-        / "runtime_manifest.py"
-    )
-    if not script.is_file():
-        raise ReleaseBundleError(f"Engine runtime manifest provider is missing: {script}")
-    environment = os.environ.copy()
-    environment["PYTHONPATH"] = os.pathsep.join(
-        item
-        for item in (
-            str(protocol_root / "src"),
-            environment.get("PYTHONPATH", ""),
-        )
-        if item
-    )
-    completed = subprocess.run(
-        [
-            sys.executable,
-            str(script),
-            "--package-root",
-            str(gp_root / "src" / "limited_remote_partner"),
-            "--protocol-root",
-            str(protocol_root / "src" / "ascendop_protocol"),
-        ],
-        cwd=str(gp_root),
-        env=environment,
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-        creationflags=process_creation_flags(),
-        startupinfo=process_startupinfo(),
-    )
-    if completed.returncode != 0:
-        detail = (completed.stderr or completed.stdout or "").strip()
-        raise ReleaseBundleError(
-            f"Engine runtime manifest provider failed: {detail[:1024]}"
-        )
-    try:
-        value = json.loads(completed.stdout)
-    except json.JSONDecodeError as exc:
-        raise ReleaseBundleError("Engine runtime manifest provider returned invalid JSON") from exc
-    if not isinstance(value, dict):
-        raise ReleaseBundleError("Engine runtime manifest must be an object")
-    return value
-
-
-def _validate_engine_manifest(
-    manifest: dict[str, object],
-    *,
-    gp_root: Path,
-    protocol_root: Path,
-) -> tuple[tuple[str, str, Path], ...]:
-    if manifest.get("schema") != "ascendop.engine-runtime-manifest.v3":
-        raise ReleaseBundleError("unsupported Engine runtime manifest schema")
-    generation = str(manifest.get("generation") or "")
-    if len(generation) != 16 or any(char not in "0123456789abcdef" for char in generation):
-        raise ReleaseBundleError(f"invalid Engine code generation: {generation}")
-    raw_files = manifest.get("files")
-    if not isinstance(raw_files, list) or not raw_files:
-        raise ReleaseBundleError("Engine runtime manifest contains no files")
-    roots = {
-        "limited_remote_partner": gp_root / "src" / "limited_remote_partner",
-        "ascendop_protocol": protocol_root / "src" / "ascendop_protocol",
-    }
-    result: list[tuple[str, str, Path]] = []
-    seen: set[tuple[str, str]] = set()
-    digest = hashlib.sha256()
-    for raw in raw_files:
-        if not isinstance(raw, dict):
-            raise ReleaseBundleError("Engine runtime manifest entry must be an object")
-        package = str(raw.get("package") or "")
-        relative = str(raw.get("path") or "").replace("\\", "/")
-        expected = str(raw.get("sha256") or "")
-        if package not in roots:
-            raise ReleaseBundleError(f"unsafe Engine runtime package: {package}")
-        candidate = Path(relative)
-        if (
-            not relative
-            or candidate.is_absolute()
-            or ".." in candidate.parts
-            or relative.startswith("/")
-        ):
-            raise ReleaseBundleError(f"unsafe Engine runtime path: {relative}")
-        key = (package, relative)
-        if key in seen:
-            raise ReleaseBundleError(f"duplicate Engine runtime path: {package}/{relative}")
-        seen.add(key)
-        path = (roots[package] / candidate).resolve()
-        _require_child(roots[package], path, "Engine runtime file")
-        if not path.is_file() or path.is_symlink():
-            raise ReleaseBundleError(f"Engine runtime file is missing: {path}")
-        payload = path.read_bytes().replace(b"\r\n", b"\n")
-        actual = hashlib.sha256(payload).hexdigest()
-        if actual != expected:
-            raise ReleaseBundleError(
-                f"Engine runtime digest mismatch: {package}/{relative}"
-            )
-        digest.update(f"{package}/{relative}".encode("utf-8"))
-        digest.update(payload)
-        result.append((package, relative, path))
-    if digest.hexdigest()[:16] != generation:
-        raise ReleaseBundleError("Engine runtime manifest generation mismatch")
-    return tuple(result)
-
-
-def _write_engine_archive(
-    *,
-    gp_root: Path,
-    protocol_root: Path,
-    files: Iterable[tuple[str, str, Path]],
-    manifest: dict[str, object],
-    destination: Path,
-) -> None:
-    del gp_root, protocol_root
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    handle, temporary_name = tempfile.mkstemp(
-        prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
-    )
-    os.close(handle)
-    temporary = Path(temporary_name)
-    manifest_payload = (
-        json.dumps(manifest, ensure_ascii=True, indent=2, sort_keys=True) + "\n"
-    ).encode("utf-8")
-    try:
-        with temporary.open("wb") as raw:
-            with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as compressed:
-                with tarfile.open(
-                    fileobj=compressed, mode="w", format=tarfile.PAX_FORMAT
-                ) as archive:
-                    manifest_info = tarfile.TarInfo("runtime_manifest.json")
-                    manifest_info.size = len(manifest_payload)
-                    manifest_info.mtime = 0
-                    archive.addfile(manifest_info, io.BytesIO(manifest_payload))
-                    for package, relative, path in files:
-                        info = archive.gettarinfo(
-                            str(path), arcname=f"{package}/{relative}"
-                        )
-                        info.uid = 0
-                        info.gid = 0
-                        info.uname = ""
-                        info.gname = ""
-                        info.mtime = 0
-                        with path.open("rb") as source:
-                            archive.addfile(info, source)
-        os.replace(temporary, destination)
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
 def _require_child(root: Path, path: Path, label: str) -> None:
     root = root.resolve()
     path = path.resolve()
@@ -973,43 +864,6 @@ def _object_digest(value: dict[str, object]) -> str:
         value, ensure_ascii=True, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
-
-
-def _validate_campaign_alignment(
-    *,
-    daemon_config: Path,
-    official_eval_config: Path,
-) -> None:
-    """Reject a release whose workflow and official state machine disagree."""
-
-    try:
-        daemon_value = json.loads(daemon_config.read_text(encoding="utf-8-sig"))
-        official_value = json.loads(
-            official_eval_config.read_text(encoding="utf-8-sig")
-        )
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ReleaseBundleError(
-            "release campaign alignment requires readable JSON configs"
-        ) from exc
-    if not isinstance(daemon_value, dict) or not isinstance(official_value, dict):
-        raise ReleaseBundleError("release campaign configs must be JSON objects")
-
-    season = str(daemon_value.get("season") or "").strip()
-    if not season:
-        return
-    campaigns = official_value.get("campaigns", [])
-    enabled_campaigns = {
-        str(item.get("campaign_id") or "").strip()
-        for item in campaigns
-        if isinstance(item, dict) and bool(item.get("enabled", True))
-    }
-    enabled_campaigns.discard("")
-    if enabled_campaigns and season not in enabled_campaigns:
-        raise ReleaseBundleError(
-            "daemon/official-eval campaign mismatch: "
-            f"daemon season={season!r} enabled official campaigns="
-            f"{sorted(enabled_campaigns)!r}"
-        )
 
 
 def _write_json_atomic(path: Path, value: dict[str, object]) -> None:

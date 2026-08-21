@@ -19,7 +19,7 @@
       "required": ["output_id", "output_kind", "isolated_path", "canonical_path", "sha256", "size_bytes"],
       "properties": {
         "output_id": {"type": "string", "minLength": 1},
-        "output_kind": {"enum": ["solver-blocker", "solver-diagnostic-request"]},
+        "output_kind": {"enum": ["pending-evidence-repair", "solver-blocker", "solver-candidate-proposal", "solver-diagnostic-request"]},
         "isolated_path": {"type": "string", "pattern": "^\\.ascendop-output/[A-Za-z0-9._/-]+$"},
         "canonical_path": {"type": "string", "minLength": 1},
         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},

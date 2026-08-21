@@ -5,6 +5,9 @@ import json
 from pathlib import Path
 from typing import Any, Protocol
 
+from ascendop_protocol.actor import flow_v5_catalog_digest
+from ascendop_protocol.agent import AGENT_OUTPUT_AUTHORING_REVISION
+
 from ascendop_daemon.control_plane.control_database import (
     ControlDatabase,
     ControlDatabaseError,
@@ -108,6 +111,7 @@ def role_gate_identity(
     *,
     role: str,
     runbook_path: str,
+    runbook_digest: str,
     operator_id: str,
 ) -> dict[str, str]:
     row = decision.row
@@ -122,6 +126,9 @@ def role_gate_identity(
         "wakeups": row.wakeups,
         "next_command": row.next_command,
         "runbook_path": runbook_path,
+        "runbook_digest": runbook_digest,
+        "agent_output_authoring_revision": AGENT_OUTPUT_AUTHORING_REVISION,
+        "flow_v5_catalog_digest": flow_v5_catalog_digest(),
     }
     identity["role_contract_digest"] = role_action_contract_digest(role)
     return identity
@@ -212,10 +219,15 @@ def current_effective_role_gate(
             if normalized_role == "solver"
             else decision.row.tester_goal
         )
+        runbook_file = root / runbook
+        if not runbook or not runbook_file.is_file():
+            return None
+        runbook_digest = hashlib.sha256(runbook_file.read_bytes()).hexdigest()
         identity = role_gate_identity(
             decision,
             role=normalized_role,
             runbook_path=runbook,
+            runbook_digest=runbook_digest,
             operator_id=operator_id,
         )
         workspace_path = role_workspace(root, operator, normalized_role)

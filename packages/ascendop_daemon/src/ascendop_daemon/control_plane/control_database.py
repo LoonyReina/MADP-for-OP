@@ -25,6 +25,7 @@ from ascendop_daemon.storage.repositories import (
     RequestPreparationRepository,
     RetryDecisionRepository,
     SchemaRegistryRepository,
+    ServiceHeartbeatRepository,
     TransactionRepository,
     TransportRepository,
     TransportReturnRepository,
@@ -35,6 +36,7 @@ from ascendop_daemon.storage.repositories import (
 class ControlDatabase(
     SchemaRegistryRepository,
     AutomationServiceRepository,
+    ServiceHeartbeatRepository,
     RequestRoutingRepository,
     RequestPreparationRepository,
     PreparationRetryRepository,

@@ -23,7 +23,7 @@ def test_solver_blocker_authoring_contract_contains_exact_machine_literals() -> 
                     "result_version": "Demo_V1_8",
                     "diagnostic_contract_revision": "solver-diagnostic-v3",
                     "diagnostic_capability_generation": (
-                        "solver-diagnostic-capabilities-v9"
+                        "solver-diagnostic-capabilities-v10"
                     ),
                 },
             }
@@ -43,6 +43,7 @@ def test_solver_blocker_authoring_contract_contains_exact_machine_literals() -> 
     assert "Hold owner:" in rendered
     assert "runtime-boundary-trace for case-method/custom-op entry" in rendered
     assert "native-workspace-query-attribution" in rendered
+    assert "host-callback-attribution" in rendered
     assert "kernel-fault-attribution" in rendered
     assert "consumed-version-runtime-boundary-replay" in rendered
     assert "pending-reservation-regeneration-execution" in rendered
@@ -150,13 +151,34 @@ def test_candidate_authoring_contract_assigns_pending_ownership_to_daemon() -> N
                     "campaign": "August",
                     "operator": "Demo",
                     "case_version": "case_v001",
+                    "base_version": "Demo_V1_8",
                     "source_before_digest": "a" * 64,
                     "proposal_key": "b" * 64,
                 },
             }
-        ]
+        ],
+        candidate_version="Demo_V1_9",
     )
 
     assert "Any change under op_host/ or op_kernel/ requires this output" in rendered
-    assert "exact FLOW V4 ACTION candidate_version" in rendered
+    assert "Revision: ascendop.agent-output-authoring.v2" in rendered
+    assert '"candidate_version": "Demo_V1_9"' in rendered
+    assert '"base_version": "Demo_V1_8"' in rendered
+    for field in (
+        "intent",
+        "observed_signal",
+        "primary_hypothesis",
+        "counter_hypothesis",
+        "router_gap",
+        "consulted_evidence",
+        "optimization_method_decision",
+        "skill_feedback",
+        "shared_knowledge_decision",
+        "changed_source",
+        "risks",
+        "hardware",
+        "created_at",
+    ):
+        assert f'"{field}"' in rendered
+    assert "do not add transport metadata such as proposal_key or producer" in rendered
     assert "daemon, not the Agent, creates TestUtils/pending" in rendered

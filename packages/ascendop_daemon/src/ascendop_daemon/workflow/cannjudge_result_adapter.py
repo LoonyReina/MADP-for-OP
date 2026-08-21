@@ -144,6 +144,29 @@ class CannJudgeV3ResultAdapter:
             or workflow.get("job_kind")
             or "operator-test"
         )
+        evidence_operation = workflow.get("evidence_operation")
+        v5_evidence_only = (
+            isinstance(evidence_operation, Mapping)
+            and operation_kind
+            in {"diagnostic-correctness-replay", "diagnostic-profile"}
+        )
+        if v5_evidence_only:
+            marker = {
+                **marker_identity,
+                "envelope_path": envelope_path.relative_to(self.root).as_posix(),
+                "bundle_root": source.relative_to(self.root).as_posix(),
+                "operation_kind": operation_kind,
+                "evidence_operation": dict(evidence_operation),
+                "outcome": "evidence-operation-projected",
+                "stdout": "",
+            }
+            _write_json_atomic(marker_path, marker)
+            return {
+                "outcome": "evidence-operation-projected",
+                "marker": marker_path.relative_to(self.root).as_posix(),
+                "engine_job_id": engine_job_id,
+                "stdout": "",
+            }
         command, ingest_outcome = self._ingest_command(
             route,
             workflow,

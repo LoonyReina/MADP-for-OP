@@ -17,6 +17,50 @@ def file_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
+def daemon_files(root: Path) -> Iterable[Path]:
+    for name in (
+        "pyproject.toml",
+        "daemon.py",
+        "launch_s5_910b.py",
+        "launcher_bootstrap.py",
+        "manage_s5_910b.ps1",
+    ):
+        yield root / name
+    package = root / "src" / "ascendop_daemon"
+    yield from (
+        path
+        for path in sorted(package.rglob("*"), key=lambda item: item.as_posix())
+        if path.is_file()
+        and not path.is_symlink()
+        and "__pycache__" not in path.parts
+        and path.suffix not in {".pyc", ".pyo"}
+    )
+
+
+def variable_default_from_path(
+    path: Path,
+    *,
+    variable_id: str,
+    fallback: int,
+) -> int:
+    registry = read_json(path) if path.is_file() else {}
+    variables = registry.get("variables")
+    if not isinstance(variables, list):
+        return fallback
+    matches = [
+        row
+        for row in variables
+        if isinstance(row, dict) and str(row.get("id") or "") == variable_id
+    ]
+    if len(matches) != 1:
+        return fallback
+    try:
+        value = int(matches[0]["default"])
+    except (KeyError, TypeError, ValueError):
+        return fallback
+    return value if value > 0 else fallback
+
+
 def safe_extract(archive: Path, destination: Path) -> None:
     destination = destination.resolve()
     with tarfile.open(archive, "r:gz") as handle:

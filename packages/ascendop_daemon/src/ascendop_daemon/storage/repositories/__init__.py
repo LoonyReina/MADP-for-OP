@@ -1,4 +1,5 @@
 from .automation_service import AutomationServiceRepository
+from .service_heartbeat import ServiceHeartbeatRepository
 from .node_lifecycle import NodeLifecycleRepository
 from .management_controls import ManagementControlRepository
 from .preparation_retries import PreparationRetryRepository
@@ -13,6 +14,7 @@ from .workflow_actions import WorkflowActionRepository
 
 __all__ = [
     "AutomationServiceRepository",
+    "ServiceHeartbeatRepository",
     "NodeLifecycleRepository",
     "ManagementControlRepository",
     "PreparationRetryRepository",

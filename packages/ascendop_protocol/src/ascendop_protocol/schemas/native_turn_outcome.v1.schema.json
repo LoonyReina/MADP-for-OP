@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.native-turn-outcome.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "action_id", "native_session_id", "native_turn_id", "terminal_status", "structured_result", "artifact_refs", "telemetry", "observed_at"],
+  "properties": {
+    "schema": {"const": "ascendop.native-turn-outcome.v1"},
+    "action_id": {"type": "string", "minLength": 1},
+    "native_session_id": {"type": "string", "minLength": 1},
+    "native_turn_id": {"type": "string", "minLength": 1},
+    "terminal_status": {"enum": ["completed", "failed", "cancelled", "interrupted", "uncertain"]},
+    "structured_result": {"type": "object"},
+    "artifact_refs": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["usage", "skills"],
+      "properties": {"usage": {"type": "object"}, "skills": {"type": "object"}}
+    },
+    "observed_at": {"type": "string", "minLength": 1}
+  }
+}

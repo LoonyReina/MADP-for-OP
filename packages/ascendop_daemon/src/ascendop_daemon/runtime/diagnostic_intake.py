@@ -47,9 +47,7 @@ class DiagnosticIntake:
 
     def run_once(self) -> dict[str, Any]:
         try:
-            correctness = discover_ready_correctness_request(
-                self.root, self.config
-            )
+            correctness = discover_ready_correctness_request(self.root, self.config)
             if correctness is not None:
                 return self._materialize_correctness(correctness)
             profiler = self._next_profiler_request()
@@ -63,9 +61,7 @@ class DiagnosticIntake:
                 "errors": [{"error": f"{type(exc).__name__}: {exc}"}],
             }
 
-    def _materialize_correctness(
-        self, request: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _materialize_correctness(self, request: dict[str, Any]) -> dict[str, Any]:
         candidate = dict(request["candidate"])
         registration = self.database.operator_for_display_name(candidate["op"])
         manifest = build_test_request_manifest(
@@ -108,6 +104,7 @@ class DiagnosticIntake:
         allowed_endpoint_ids = self._comparison_endpoint_candidates(
             dict(request["state"])
         )
+        comparison_route = dict(request["state"].get("comparison_route") or {})
         manifest = build_test_request_manifest(
             self.root,
             candidate,
@@ -123,6 +120,10 @@ class DiagnosticIntake:
             ),
             pinned_endpoint=pinned_endpoint,
             allowed_endpoint_ids=allowed_endpoint_ids,
+            required_node_session_id=str(comparison_route.get("node_session_id") or ""),
+            required_capability_generation=str(
+                comparison_route.get("capability_generation") or ""
+            ),
         )
         record, route = self._persist_and_route(manifest)
         attempt_id = self._routed_attempt_id(route)
@@ -148,9 +149,7 @@ class DiagnosticIntake:
     def _persist_and_route(
         self, manifest: dict[str, Any]
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        manifest_path, persisted = persist_test_request(
-            self.request_root, manifest
-        )
+        manifest_path, persisted = persist_test_request(self.request_root, manifest)
         record = self.database.create_test_request(persisted, manifest_path)
         route = route_and_prepare_test_request(
             self.root,
@@ -163,6 +162,8 @@ class DiagnosticIntake:
 
     @staticmethod
     def _routed_attempt_id(route: dict[str, Any]) -> str:
+        if route.get("terminal"):
+            return ""
         attempt = route.get("attempt")
         if not isinstance(attempt, dict):
             return ""
@@ -238,14 +239,14 @@ class DiagnosticIntake:
                     f"profiler request has no cases: {operator}/{state_path}"
                 )
             target_version = str(target.get("test_version") or "")
-            submit_snapshot = (self.root / str(target.get("submit_snapshot") or "")).resolve()
+            submit_snapshot = (
+                self.root / str(target.get("submit_snapshot") or "")
+            ).resolve()
             self._bounded(submit_snapshot)
             attempt = int(target.get("attempt", 0) or 0) + 1
             collection_mode = profiler_mode
             engine_mode = (
-                "fast-single"
-                if profiler_mode == "primary-all-cases"
-                else "deep-dual"
+                "fast-single" if profiler_mode == "primary-all-cases" else "deep-dual"
             )
             profiler_plan = {
                 "protocol_version": "ascendop-profiler-plan-v3",
@@ -266,15 +267,11 @@ class DiagnosticIntake:
                 "cases": cases,
                 "case_shapes": dict(state.get("case_shapes") or {}),
                 "case_specs_sha256": str(state.get("case_specs_sha256") or ""),
-                "expected_block_dims": dict(
-                    state.get("expected_block_dims") or {}
-                ),
+                "expected_block_dims": dict(state.get("expected_block_dims") or {}),
                 "measurement_repetitions": int(
                     state.get("measurement_repetitions", 1) or 1
                 ),
-                "comparison_affinity": str(
-                    state.get("comparison_affinity") or ""
-                ),
+                "comparison_affinity": str(state.get("comparison_affinity") or ""),
                 "profiler_mode": engine_mode,
                 "collection_mode": collection_mode,
                 "primary_metrics": str(state.get("primary_metrics") or ""),
@@ -384,9 +381,7 @@ class DiagnosticIntake:
                 "targets": targets,
                 "cases": list(request["profiler_plan"]["cases"]),
                 "max_cases": len(request["profiler_plan"]["cases"]),
-                "roofline_case_count": len(
-                    request["profiler_plan"]["roofline_cases"]
-                ),
+                "roofline_case_count": len(request["profiler_plan"]["roofline_cases"]),
                 "collection_mode": request["profiler_mode"],
                 "comparison_route": comparison_route,
             }
@@ -420,10 +415,10 @@ class DiagnosticIntake:
             raise DiagnosticIntakeError(
                 f"comparison endpoint is no longer registered: {endpoint_id}"
             )
-        if (
-            endpoint.generation != str(route.get("endpoint_generation") or "")
-            or endpoint.execution_environment_id
-            != str(route.get("execution_environment_id") or "")
+        if endpoint.generation != str(
+            route.get("endpoint_generation") or ""
+        ) or endpoint.execution_environment_id != str(
+            route.get("execution_environment_id") or ""
         ):
             raise DiagnosticIntakeError(
                 "comparison endpoint generation/environment changed before all targets completed"
@@ -468,9 +463,10 @@ class DiagnosticIntake:
             ),
             None,
         )
-        if endpoint is None or int(
-            endpoint.capabilities.get("device_count", 0) or 0
-        ) != 1:
+        if (
+            endpoint is None
+            or int(endpoint.capabilities.get("device_count", 0) or 0) != 1
+        ):
             raise DiagnosticIntakeError(
                 "same-device comparison route must resolve to a single-device endpoint"
             )
@@ -485,14 +481,17 @@ class DiagnosticIntake:
         attempt = route.get("attempt")
         if not isinstance(attempt, dict):
             raise DiagnosticIntakeError("routed profiler attempt identity is missing")
+        outbox = route.get("outbox")
+        if not isinstance(outbox, dict):
+            outbox = {}
         identity = {
             "endpoint_id": str(attempt.get("endpoint_id") or ""),
-            "endpoint_generation": str(
-                attempt.get("endpoint_generation") or ""
-            ),
+            "endpoint_generation": str(attempt.get("endpoint_generation") or ""),
             "execution_environment_id": str(
                 attempt.get("execution_environment_id") or ""
             ),
+            "node_session_id": str(outbox.get("node_session_id") or ""),
+            "capability_generation": str(outbox.get("capability_generation") or ""),
         }
         if not all(identity.values()):
             raise DiagnosticIntakeError(
@@ -505,7 +504,9 @@ class DiagnosticIntake:
         try:
             value = json.loads(path.read_text(encoding="utf-8-sig"))
         except (OSError, json.JSONDecodeError) as exc:
-            raise DiagnosticIntakeError(f"cannot read diagnostic state {path}: {exc}") from exc
+            raise DiagnosticIntakeError(
+                f"cannot read diagnostic state {path}: {exc}"
+            ) from exc
         if not isinstance(value, dict):
             raise DiagnosticIntakeError(f"diagnostic state must be an object: {path}")
         return value

@@ -1,0 +1,36 @@
+{
+  "schema": "ascendop.actor-action-envelope.v1",
+  "action_id": "actor-action-demo-1",
+  "idempotency_key": "solver.iterate:Demo:iteration-1",
+  "action_kind": "solver.iterate",
+  "effective_role": "solver",
+  "principal_id": "solver-principal-demo",
+  "role_binding_id": "binding-solver-1",
+  "producer_generation": "flow-v5-catalog-v4",
+  "scope": {
+    "workspace_roots": ["operators_workspace/Demo"],
+    "operator_ids": ["Demo"],
+    "capabilities": ["operator-source-write"]
+  },
+  "lease": {
+    "lease_id": "lease-demo-1",
+    "generation": "lease-generation-1",
+    "expires_at": "2026-08-17T00:30:00Z"
+  },
+  "causation": {
+    "trace_id": "trace-demo-1",
+    "correlation_id": "iteration-demo-1",
+    "parent_action_id": null,
+    "candidate_id": null,
+    "promotion_receipt_id": null,
+    "request_id": null,
+    "attempt_id": null
+  },
+  "payload": {
+    "operator_id": "Demo",
+    "candidate_id": "candidate-demo-1",
+    "context_id": "context-demo-1",
+    "workspace": "operators_workspace/Demo"
+  },
+  "created_at": "2026-08-17T00:00:00Z"
+}

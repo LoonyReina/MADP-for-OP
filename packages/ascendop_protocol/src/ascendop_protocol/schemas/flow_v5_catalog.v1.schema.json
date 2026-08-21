@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.flow-v5-catalog.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generation",
+    "evidence_operation_registry_generation",
+    "evidence_operation_registry_digest",
+    "roles",
+    "action_catalog",
+    "evidence_operations",
+    "outcomes",
+    "blocker_kinds",
+    "native_terminal_statuses",
+    "execution_statuses",
+    "failure_classes",
+    "output_kinds"
+  ],
+  "properties": {
+    "schema": {"const": "ascendop.flow-v5-catalog.v1"},
+    "generation": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "evidence_operation_registry_generation": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "evidence_operation_registry_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "roles": {
+      "type": "array",
+      "minItems": 5,
+      "uniqueItems": true,
+      "items": {"enum": ["assistant", "developer", "manager", "solver", "tester"]}
+    },
+    "action_catalog": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["action_kind", "role", "required_capability"],
+        "properties": {
+          "action_kind": {"type": "string", "pattern": "^[a-z]+[a-z0-9.-]+$"},
+          "role": {"enum": ["assistant", "developer", "manager", "solver", "tester"]},
+          "required_capability": {"type": "string", "pattern": "^[a-z]+[a-z0-9.-]+$"}
+        }
+      }
+    },
+    "evidence_operations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["operation_code", "owner", "resource_class", "expected_consumers"],
+        "properties": {
+          "operation_code": {"type": "string", "pattern": "^[a-z]+[a-z0-9.-]+$"},
+          "owner": {"const": "daemon-harness"},
+          "resource_class": {"enum": ["device", "endpoint", "local", "transport"]},
+          "expected_consumers": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"enum": ["assistant", "developer", "manager", "solver", "tester"]}
+          }
+        }
+      }
+    },
+    "outcomes": {
+      "type": "array",
+      "minItems": 5,
+      "uniqueItems": true,
+      "items": {"enum": ["proposed_change", "no_change_with_evidence", "request_evidence", "blocked_external", "protocol_gap"]}
+    },
+    "blocker_kinds": {
+      "type": "array",
+      "minItems": 3,
+      "uniqueItems": true,
+      "items": {"enum": ["capability_gap", "external_dependency", "user_policy_decision"]}
+    },
+    "native_terminal_statuses": {
+      "type": "array",
+      "minItems": 5,
+      "uniqueItems": true,
+      "items": {"enum": ["completed", "failed", "cancelled", "interrupted", "uncertain"]}
+    },
+    "execution_statuses": {
+      "type": "array",
+      "minItems": 4,
+      "uniqueItems": true,
+      "items": {"enum": ["completed", "failed", "cancelled", "uncertain"]}
+    },
+    "failure_classes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"enum": ["protocol_violation", "adapter_execution", "authentication", "cancelled", "uncertain_delivery"]}
+    },
+    "output_kinds": {
+      "type": "array",
+      "minItems": 4,
+      "uniqueItems": true,
+      "items": {"enum": ["source-change", "pending-evidence-repair", "solver-blocker", "solver-candidate-proposal", "solver-diagnostic-request"]}
+    }
+  }
+}

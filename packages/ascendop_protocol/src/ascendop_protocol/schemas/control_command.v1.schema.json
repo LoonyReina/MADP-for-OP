@@ -1,1 +1,24 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"ascendop.control-command.v1","type":"object","required":["schema","command_id","idempotency_key","command_kind","actor_id","required_capability","parameters","created_at"],"properties":{"schema":{"const":"ascendop.control-command.v1"},"required_capability":{"enum":["operator","admin"]},"parameters":{"type":"object"}},"additionalProperties":true}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.control-command.v1",
+  "type": "object",
+  "required": ["schema", "command_id", "idempotency_key", "command_kind", "actor_id", "required_capability", "parameters", "created_at"],
+  "properties": {
+    "schema": {"const": "ascendop.control-command.v1"},
+    "command_id": {"type": "string", "minLength": 1},
+    "idempotency_key": {"type": "string", "minLength": 1},
+    "command_kind": {"enum": ["agent.register", "agent.bind", "agent.cancel-action", "agent.debug-pin", "endpoint.drain", "endpoint.resume", "manager.flow-start", "manager.flow-pause", "manager.flow-resume", "manager.flow-stop", "manager.request-user-decision"]},
+    "actor_id": {"type": "string", "minLength": 1},
+    "required_capability": {"enum": ["operator", "admin"]},
+    "parameters": {"type": "object"},
+    "actor_action": {"type": "object"},
+    "created_at": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"command_kind": {"pattern": "^manager\\."}}},
+      "then": {"required": ["actor_action"]}
+    }
+  ],
+  "additionalProperties": false
+}

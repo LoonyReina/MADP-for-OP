@@ -25,8 +25,12 @@ from ascendop_daemon.runtime.endpoint_reconciliation import EndpointReconciliati
 from ascendop_daemon.runtime.release_identity import source_generation
 from ascendop_daemon.runtime.dispatcher_factory import build_application_dispatchers
 from ascendop_daemon.runtime.management_composition import build_control_command_worker
+from ascendop_daemon.runtime.developer_runbook import resolve_developer_runbook
 from ascendop_daemon.runtime.submit_intake import SubmitIntake
 from ascendop_daemon.runtime.diagnostic_intake import DiagnosticIntake
+from ascendop_daemon.runtime.evidence_operation_intake import (
+    EvidenceOperationIntake,
+)
 from ascendop_daemon.workflow.action_coordinator import WorkflowActionCoordinator
 from ascendop_daemon.workflow.typed_executor import TypedActionExecutor
 class V4Application(ApplicationLifecycle):
@@ -57,7 +61,11 @@ class V4Application(ApplicationLifecycle):
                 self.policy.get("retry.max_agent_preflight_attempts")
             ),
         )
-        self.control_commands = build_control_command_worker(self.database, self.policy)
+        self.control_commands = build_control_command_worker(
+            self.database,
+            self.policy,
+            root=paths.root,
+        )
         self.dispatchers = build_application_dispatchers(
             root=paths.root,
             database=self.database,
@@ -65,18 +73,51 @@ class V4Application(ApplicationLifecycle):
             policy=self.policy,
             code_generation=self.generation,
         )
+        developer_target_id = str(
+            self.config.policy.get("flow_v5_developer_target_id")
+            or self.config.policy.get("flow_v3_steward_assistant_target_id")
+            or ""
+        )
+        developer_binding = next(
+            (
+                binding
+                for binding in self.registry.role_bindings
+                if binding["role"] == "developer"
+                and binding["native_session_id"] == developer_target_id
+            ),
+            None,
+        )
+        manager_binding = next(
+            (
+                binding
+                for binding in self.registry.role_bindings
+                if binding["role"] == "manager" and binding["state"] == "active"
+            ),
+            None,
+        )
+        manager_target_id = (
+            str(manager_binding["native_session_id"])
+            if manager_binding is not None
+            else ""
+        )
+        developer_runbook = resolve_developer_runbook(
+            paths.root,
+            Path(
+                str(
+                    self.config.policy.get("flow_v5_developer_runbook_path")
+                    or self.config.policy.get("flow_v3_steward_runbook_path")
+                    or "docs/flow_v5/DEVELOPER_CAPABILITY_RUNBOOK.md"
+                )
+            ),
+        )
         self.assistant = AssistantCoordinator(
             paths.root,
             self.database,
-            steward_target_id=str(
-                self.config.policy.get("flow_v3_steward_assistant_target_id") or ""
-            ),
-            steward_runbook_path=Path(
-                str(
-                    self.config.policy.get("flow_v3_steward_runbook_path")
-                    or "docs/next/steward_escalation_runbook.md"
-                )
-            ),
+            steward_target_id=developer_target_id,
+            steward_runbook_path=developer_runbook.relative_path,
+            developer_role_binding=developer_binding,
+            manager_target_id=manager_target_id,
+            manager_role_binding=manager_binding,
         )
         self.official_progress = OfficialProgressPublisher(
             root=paths.root,
@@ -136,6 +177,12 @@ class V4Application(ApplicationLifecycle):
         self.submit_intake = SubmitIntake(
             root=paths.root,
             config=self.config,
+            database=self.database,
+            registry=self.registry,
+            code_generation=self.generation,
+        )
+        self.evidence_operation_intake = EvidenceOperationIntake(
+            root=paths.root,
             database=self.database,
             registry=self.registry,
             code_generation=self.generation,

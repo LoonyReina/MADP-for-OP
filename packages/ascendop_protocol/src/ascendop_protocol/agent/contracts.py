@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from typing import Any, Mapping
 
@@ -12,6 +13,8 @@ AGENT_WORK_LEASE_SCHEMA = "ascendop.agent-work-lease.v1"
 AGENT_ITERATION_SCHEMA = "ascendop.agent-iteration.v1"
 AGENT_CONTEXT_SNAPSHOT_SCHEMA = "ascendop.agent-context-snapshot.v1"
 AGENT_TURN_DELIVERY_SCHEMA = "ascendop.agent-turn-delivery.v1"
+AGENT_TURN_DELIVERY_V2_SCHEMA = "ascendop.agent-turn-delivery.v2"
+AGENT_TURN_COMPLETION_SCHEMA = "ascendop.agent-turn-completion.v1"
 AGENT_OUTPUT_CONTRACT_SCHEMA = "ascendop.agent-output-contract.v1"
 AGENT_OUTPUT_SEAL_SCHEMA = "ascendop.agent-output-seal.v1"
 AGENT_OUTPUT_PROMOTION_RECEIPT_SCHEMA = (
@@ -185,6 +188,35 @@ def validate_agent_output_contract(raw: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def validate_solver_candidate_proposal(raw: Mapping[str, Any]) -> dict[str, Any]:
+    expected_fields = {
+        "schema",
+        "campaign",
+        "operator",
+        "candidate_version",
+        "case_version",
+        "base_version",
+        "source_before_digest",
+        "intent",
+        "observed_signal",
+        "primary_hypothesis",
+        "counter_hypothesis",
+        "router_gap",
+        "consulted_evidence",
+        "optimization_method_decision",
+        "skill_feedback",
+        "shared_knowledge_decision",
+        "changed_source",
+        "risks",
+        "hardware",
+        "created_at",
+    }
+    missing = sorted(expected_fields - set(raw))
+    unknown = sorted(set(raw) - expected_fields)
+    if missing or unknown:
+        raise AgentContractError(
+            "Solver candidate proposal fields do not match schema: "
+            f"missing={missing}, unknown={unknown}"
+        )
     _schema(raw, SOLVER_CANDIDATE_PROPOSAL_SCHEMA)
     for field in (
         "campaign",
@@ -313,7 +345,11 @@ def validate_agent_context_snapshot(raw: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def validate_agent_turn_delivery(raw: Mapping[str, Any]) -> dict[str, Any]:
-    _schema(raw, AGENT_TURN_DELIVERY_SCHEMA)
+    schema = str(raw.get("schema") or "")
+    if schema not in {AGENT_TURN_DELIVERY_SCHEMA, AGENT_TURN_DELIVERY_V2_SCHEMA}:
+        raise AgentContractError(
+            "unsupported Agent turn delivery; expected v1 or v2"
+        )
     for field in (
         "delivery_id",
         "delivery_key",
@@ -331,17 +367,113 @@ def validate_agent_turn_delivery(raw: Mapping[str, Any]) -> dict[str, Any]:
     _token(raw["target_kind"], "target_kind")
     _relative_path(raw["workspace"], "workspace")
     _sha256(raw["prompt_digest"], "prompt_digest")
-    validate_agent_action(_object(raw.get("action"), "action"))
+    action = validate_agent_action(_object(raw.get("action"), "action"))
     validate_agent_context_snapshot(_object(raw.get("context"), "context"))
-    validate_agent_work_lease(_object(raw.get("lease"), "lease"))
+    lease = validate_agent_work_lease(_object(raw.get("lease"), "lease"))
     agent = _object(raw.get("agent"), "agent")
     _text(agent.get("agent_id"), "agent.agent_id")
     _text(agent.get("driver"), "agent.driver")
     if agent["driver"] not in AGENT_DRIVERS:
         raise AgentContractError(f"unsupported agent driver: {agent['driver']}")
-    prompt = _text(raw.get("prompt"), "prompt")
+    _text(raw.get("prompt"), "prompt")
+    prompt = str(raw["prompt"])
     if len(prompt.encode("utf-8")) > 4 * 1024 * 1024:
         raise AgentContractError("prompt exceeds the Agent delivery limit")
+    if hashlib.sha256(prompt.encode("utf-8")).hexdigest() != raw["prompt_digest"]:
+        raise AgentContractError("Agent delivery prompt digest mismatch")
+    if schema == AGENT_TURN_DELIVERY_V2_SCHEMA:
+        from ascendop_protocol.actor import validate_agent_action_context_v3
+
+        action_context = validate_agent_action_context_v3(
+            _object(raw.get("action_context"), "action_context")
+        )
+        attempt = _object(action_context.get("attempt"), "action_context.attempt")
+        expected_key = f"{action['action_id']}:{attempt['attempt_id']}"
+        if raw["delivery_key"] != expected_key:
+            raise AgentContractError("Agent delivery key does not match its attempt")
+        if action_context["action_id"] != action["action_id"]:
+            raise AgentContractError("Agent action context identity mismatch")
+        if lease["action_id"] != action["action_id"]:
+            raise AgentContractError("Agent delivery lease action mismatch")
+    return dict(raw)
+
+
+def agent_turn_delivery_identity(raw: Mapping[str, Any]) -> dict[str, str]:
+    """Return the attempt-scoped identity used by external turn carriers."""
+
+    action = _object(raw.get("action"), "action")
+    action_id = _token(action.get("action_id"), "action.action_id")
+    delivery_key = _text(raw.get("delivery_key"), "delivery_key")
+    prefix = f"{action_id}:"
+    if not delivery_key.startswith(prefix):
+        raise AgentContractError("Agent delivery key does not match its action")
+    attempt_id = _token(delivery_key[len(prefix) :], "delivery_key.attempt_id")
+    return {
+        "action_id": action_id,
+        "attempt_id": attempt_id,
+        "delivery_key": delivery_key,
+        "delivery_marker": (
+            f"ASCENDOP_AGENT_ACTION={action_id} ATTEMPT={attempt_id}"
+        ),
+    }
+
+
+def validate_agent_turn_completion(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate the attempt-scoped terminal envelope produced by a carrier."""
+
+    _schema(raw, AGENT_TURN_COMPLETION_SCHEMA)
+    for field in (
+        "action_id",
+        "attempt_id",
+        "delivery_key",
+        "delivery_marker",
+        "target_id",
+        "turn_id",
+        "terminal_status",
+        "observed_at",
+    ):
+        _text(raw.get(field), field)
+    action_id = _token(raw["action_id"], "action_id")
+    attempt_id = _token(raw["attempt_id"], "attempt_id")
+    expected_key = f"{action_id}:{attempt_id}"
+    if raw["delivery_key"] != expected_key:
+        raise AgentContractError("Agent completion delivery key changed")
+    expected_marker = f"ASCENDOP_AGENT_ACTION={action_id} ATTEMPT={attempt_id}"
+    if raw["delivery_marker"] != expected_marker:
+        raise AgentContractError("Agent completion delivery marker changed")
+    if raw["terminal_status"] not in {
+        "completed",
+        "failed",
+        "interrupted",
+        "cancelled",
+        "uncertain",
+    }:
+        raise AgentContractError(
+            f"unsupported Agent terminal status: {raw['terminal_status']}"
+        )
+    structured = _object(raw.get("structured_result"), "structured_result")
+    if structured.get("schema") == "ascendop.agent-action-outcome.v1":
+        from ascendop_protocol.actor import validate_agent_action_outcome
+
+        outcome = validate_agent_action_outcome(structured)
+        if outcome["action_id"] != action_id:
+            raise AgentContractError("Agent completion outcome action identity changed")
+        expected_status = (
+            "failed" if raw["terminal_status"] == "interrupted" else raw["terminal_status"]
+        )
+        if outcome["execution_status"] != expected_status:
+            raise AgentContractError("Agent completion outcome status changed")
+    output_error = raw.get("output_error", "")
+    if output_error:
+        _text(output_error, "output_error")
+        if structured.get("schema") == "ascendop.agent-action-outcome.v1":
+            raise AgentContractError(
+                "Agent completion cannot contain both a typed outcome and output_error"
+            )
+    elif raw["terminal_status"] == "completed" and not structured:
+        raise AgentContractError(
+            "completed Agent turn requires structured_result or output_error"
+        )
     return dict(raw)
 
 

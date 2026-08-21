@@ -106,6 +106,17 @@ def _runtime_route_rejection_reasons(
     capability_generation = str(node["capability_generation"])
     if not capability_generation:
         reasons.append("node-capability-generation-missing")
+    required_session = str(requirements.get("node_session_id") or "")
+    if required_session and str(node["current_session_id"]) != required_session:
+        reasons.append("node-session-mismatch")
+    required_capability_generation = str(
+        requirements.get("capability_generation") or ""
+    )
+    if (
+        required_capability_generation
+        and capability_generation != required_capability_generation
+    ):
+        reasons.append("node-capability-generation-mismatch")
     report = json.loads(str(node["report_json"]))
     if (
         str(report.get("execution_environment_id") or "")

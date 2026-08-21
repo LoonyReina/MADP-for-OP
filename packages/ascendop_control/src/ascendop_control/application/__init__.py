@@ -1,6 +1,7 @@
 from .queries import PublicQueryService
+from .workflow_projections import WorkflowProjectionService
 
-__all__ = ["PublicQueryService"]
+__all__ = ["PublicQueryService", "WorkflowProjectionService"]
 from .commands import (
     ControlCommandHandler,
     ControlCommandRejected,

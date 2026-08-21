@@ -19,6 +19,11 @@ from ascendop_protocol.agent import (
     validate_agent_pool,
     validate_agent_registration,
 )
+from ascendop_protocol.evidence import (
+    evidence_operation_definition,
+    validate_evidence_operation_request,
+    validate_evidence_operation_result,
+)
 from .errors import ControlRepositoryError
 from .management_repository import ManagementRepository
 from .service_repository import ServiceRepository
@@ -803,6 +808,12 @@ class _AgentRepository:
                         "runner_id": runner_id,
                     },
                 )
+                attempt_context = self._attempt_context_in_connection(
+                    conn,
+                    action_id=action_id,
+                    attempt_id=attempt_id,
+                    ordinal=ordinal,
+                )
                 return {
                     "action": json.loads(str(row["action_json"])),
                     "context": self._context_in_connection(
@@ -812,6 +823,7 @@ class _AgentRepository:
                     "attempt_id": attempt_id,
                     "lease": lease,
                     "boot_id": boot_id,
+                    "attempt_context": attempt_context,
                 }
         return None
 
@@ -831,7 +843,7 @@ class _AgentRepository:
         with self.transaction() as conn:
             self._expire_agent_leases(conn, now)
             rows = conn.execute(
-                "SELECT a.*, t.session_id, t.attempt_id, l.lease_id, "
+                "SELECT a.*, t.session_id, t.attempt_id, t.ordinal, l.lease_id, "
                 "l.lease_token, l.acquired_at AS lease_acquired_at, "
                 "l.state AS lease_state FROM agent_actions_v4 a "
                 "JOIN agent_action_attempts_v4 t ON t.attempt_id=a.current_attempt_id "
@@ -907,6 +919,12 @@ class _AgentRepository:
                     "session_id": str(row["session_id"]),
                     "lease": lease,
                     "boot_id": boot_id,
+                    "attempt_context": self._attempt_context_in_connection(
+                        conn,
+                        action_id=str(row["action_id"]),
+                        attempt_id=str(row["attempt_id"]),
+                        ordinal=int(row["ordinal"]),
+                    ),
                 }
         return None
 
@@ -1977,6 +1995,208 @@ class _AgentRepository:
                 "boot_id": str(agent_row["boot_id"]),
             }
 
+    def recover_discarded_agent_turn_outcome(
+        self,
+        *,
+        action_id: str,
+        source_attempt_id: str,
+        turn_id: str,
+        completion_digest: str,
+        verification: str,
+        runner_id: str,
+        lease_seconds: int = 30,
+    ) -> dict[str, Any]:
+        """Open a receipt-reconciliation attempt for one proven adapter omission."""
+
+        if verification != "exact-terminal-turn-structured-result":
+            raise ControlRepositoryError(
+                "Agent outcome recovery requires exact terminal-turn verification"
+            )
+        if not turn_id.strip():
+            raise ControlRepositoryError("Agent outcome recovery requires turn_id")
+        if len(completion_digest) != 64 or any(
+            char not in "0123456789abcdef" for char in completion_digest.lower()
+        ):
+            raise ControlRepositoryError(
+                "Agent outcome recovery requires a SHA-256 completion digest"
+            )
+        now = _utc_now()
+        expires_at = _future(now, lease_seconds)
+        with self.transaction() as conn:
+            row = conn.execute(
+                "SELECT a.*, t.ordinal, t.state AS attempt_state, t.session_id, "
+                "t.details_json, l.state AS lease_state, l.lease_json, "
+                "l.acquired_at, l.lease_id, i.state AS iteration_state, "
+                "i.iteration_json, r.status AS receipt_status, r.receipt_json "
+                "FROM agent_actions_v4 a JOIN agent_action_attempts_v4 t "
+                "ON t.attempt_id=a.current_attempt_id "
+                "JOIN agent_work_leases_v4 l ON l.lease_id=a.current_lease_id "
+                "JOIN agent_iterations_v4 i ON i.iteration_id=a.iteration_id "
+                "JOIN agent_action_receipts_v4 r ON r.action_id=a.action_id "
+                "WHERE a.action_id=?",
+                (action_id,),
+            ).fetchone()
+            if row is None:
+                raise ControlRepositoryError(
+                    "Agent outcome recovery evidence is incomplete"
+                )
+            if str(row["current_attempt_id"]) != source_attempt_id:
+                raise ControlRepositoryError(
+                    "Agent outcome recovery attempt identity changed"
+                )
+            if not self._workflow_agent_gate_is_current(conn, row):
+                raise ControlRepositoryError(
+                    "Agent outcome recovery rejected: workflow gate is obsolete"
+                )
+            if (
+                str(row["state"]) != "failed"
+                or str(row["attempt_state"]) != "failed"
+                or str(row["lease_state"]) != "released"
+                or str(row["iteration_state"]) != "failed"
+                or str(row["receipt_status"]) != "failed"
+                or str(row["session_id"] or "") != turn_id
+            ):
+                raise ControlRepositoryError(
+                    "Agent outcome recovery lifecycle evidence is inconsistent"
+                )
+            receipt = json.loads(str(row["receipt_json"]))
+            completion = receipt.get("completion", {})
+            if (
+                not isinstance(completion, Mapping)
+                or completion.get("failure_class")
+                != "agent-output-validation-retry-exhausted"
+                or completion.get("validation_error")
+                != "completed Agent action produced no durable output or typed outcome"
+                or completion.get("adapter_id") != "codex-ide-task-adapter"
+                or completion.get("summary") != "exact_codex_ide_turn_completed"
+                or str(completion.get("session_id") or "") != turn_id
+            ):
+                raise ControlRepositoryError(
+                    "Agent outcome recovery is limited to the discarded structured-result defect"
+                )
+            conflict = conn.execute(
+                "SELECT action_id FROM agent_actions_v4 WHERE operator_id=? AND role=? "
+                "AND state IN ('queued','claimed','running','uncertain','retry-pending') "
+                "AND action_id<>? LIMIT 1",
+                (row["operator_id"], row["role"], action_id),
+            ).fetchone()
+            if conflict is not None:
+                raise ControlRepositoryError(
+                    "another Agent action is active for this operator role"
+                )
+            agent_row = conn.execute(
+                "SELECT * FROM agent_registrations_v4 WHERE agent_id=?",
+                (row["assigned_agent_id"],),
+            ).fetchone()
+            if agent_row is None:
+                raise ControlRepositoryError(
+                    "Agent outcome recovery executor is no longer registered"
+                )
+
+            attempt_id = f"aat-{uuid.uuid4().hex}"
+            lease_token = secrets.token_urlsafe(32)
+            prior_receipt_sha256 = hashlib.sha256(
+                str(row["receipt_json"]).encode("utf-8")
+            ).hexdigest()
+            recovery = {
+                "schema": "ascendop.agent-receipt-reconciliation.v1",
+                "verification": verification,
+                "source_attempt_id": source_attempt_id,
+                "source_attempt_ordinal": int(row["ordinal"]),
+                "turn_id": turn_id,
+                "completion_digest": completion_digest.lower(),
+                "prior_receipt_sha256": prior_receipt_sha256,
+                "runner_id": runner_id,
+                "recovered_at": now,
+            }
+            lease = json.loads(str(row["lease_json"] or "{}"))
+            lease.update(
+                {
+                    "lease_token": lease_token,
+                    "state": "active",
+                    "heartbeat_at": now,
+                    "expires_at": expires_at,
+                }
+            )
+            iteration = json.loads(str(row["iteration_json"] or "{}"))
+            iteration.update(
+                {
+                    "state": "running",
+                    "agent_id": str(row["assigned_agent_id"]),
+                    "updated_at": now,
+                }
+            )
+            conn.execute(
+                "INSERT INTO agent_action_attempts_v4(attempt_id, action_id, "
+                "ordinal, agent_id, runner_id, state, session_id, started_at, "
+                "heartbeat_at, details_json, created_at, updated_at) "
+                "VALUES(?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?)",
+                (
+                    attempt_id,
+                    action_id,
+                    int(row["ordinal"]) + 1,
+                    row["assigned_agent_id"],
+                    runner_id,
+                    turn_id,
+                    now,
+                    now,
+                    _canonical_json({"receipt_reconciliation": recovery}),
+                    now,
+                    now,
+                ),
+            )
+            conn.execute(
+                "UPDATE agent_actions_v4 SET state='running', claimed_by=?, "
+                "current_attempt_id=?, updated_at=? WHERE action_id=?",
+                (runner_id, attempt_id, now, action_id),
+            )
+            conn.execute(
+                "UPDATE agent_iterations_v4 SET state='running', agent_id=?, "
+                "iteration_json=?, updated_at=? WHERE iteration_id=?",
+                (
+                    row["assigned_agent_id"],
+                    _canonical_json(iteration),
+                    now,
+                    row["iteration_id"],
+                ),
+            )
+            conn.execute(
+                "UPDATE agent_work_leases_v4 SET lease_token=?, state='active', "
+                "runner_id=?, released_at='', heartbeat_at=?, expires_at=?, "
+                "lease_json=? WHERE lease_id=?",
+                (
+                    lease_token,
+                    runner_id,
+                    now,
+                    expires_at,
+                    _canonical_json(lease),
+                    row["lease_id"],
+                ),
+            )
+            conn.execute(
+                "DELETE FROM agent_action_receipts_v4 WHERE action_id=?",
+                (action_id,),
+            )
+            self._event(
+                conn,
+                "agent-action-structured-result-reconciled",
+                "agent-action",
+                action_id,
+                recovery,
+            )
+            return {
+                "action": json.loads(str(row["action_json"])),
+                "context": self._context_in_connection(
+                    conn, str(row["iteration_id"])
+                ),
+                "agent": _decode_agent(agent_row),
+                "attempt_id": attempt_id,
+                "session_id": turn_id,
+                "lease": lease,
+                "boot_id": str(agent_row["boot_id"]),
+                "recovery": recovery,
+            }
+
     @contextmanager
     def agent_action_promotion_guard(
         self,
@@ -2202,6 +2422,549 @@ class _AgentRepository:
         agent["_selection_pool_id"] = pool_id
         return agent
 
+    def create_evidence_operation_request(
+        self, request: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        value = validate_evidence_operation_request(request)
+        if value["state"] != "queued":
+            raise ControlRepositoryError(
+                "new evidence operation request must be queued"
+            )
+        definition = evidence_operation_definition(str(value["operation_code"]))
+        origin = dict(value["origin"])
+        now = _utc_now()
+        payload = _canonical_json(value)
+        with self.transaction() as conn:
+            action = conn.execute(
+                "SELECT iteration_id, operator_id, role FROM agent_actions_v4 "
+                "WHERE action_id=?",
+                (origin["action_id"],),
+            ).fetchone()
+            if action is None:
+                raise ControlRepositoryError(
+                    "evidence operation origin action does not exist"
+                )
+            expected = (
+                str(action["iteration_id"]),
+                str(action["operator_id"]),
+                str(action["role"]),
+            )
+            observed = (
+                str(origin["iteration_id"]),
+                str(origin["operator_id"]),
+                str(origin["role"]),
+            )
+            if observed != expected:
+                raise ControlRepositoryError(
+                    f"evidence operation origin identity mismatch: {observed} != {expected}"
+                )
+            existing = conn.execute(
+                "SELECT operation_request_id, request_json FROM "
+                "evidence_operation_requests_v5 WHERE idempotency_key=?",
+                (value["idempotency_key"],),
+            ).fetchone()
+            if existing is not None:
+                previous = json.loads(str(existing["request_json"]))
+                if _without_created_at(previous) != _without_created_at(value):
+                    raise ControlRepositoryError(
+                        "evidence operation idempotency collision with different payload"
+                    )
+                return self._evidence_request_in_connection(
+                    conn, str(existing["operation_request_id"])
+                )
+            conn.execute(
+                "INSERT INTO evidence_operation_requests_v5("
+                "operation_request_id, idempotency_key, registry_generation, "
+                "registry_digest, operation_code, origin_action_id, "
+                "origin_iteration_id, operator_id, origin_role, expected_consumer, "
+                "state, executor, resource_class, request_json, created_at, updated_at"
+                ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)",
+                (
+                    value["operation_request_id"],
+                    value["idempotency_key"],
+                    value["registry_generation"],
+                    value["registry_digest"],
+                    value["operation_code"],
+                    origin["action_id"],
+                    origin["iteration_id"],
+                    origin["operator_id"],
+                    origin["role"],
+                    value["expected_consumer"],
+                    definition["executor"],
+                    definition["resource_class"],
+                    payload,
+                    now,
+                    now,
+                ),
+            )
+            self._event(
+                conn,
+                "evidence-operation-requested",
+                "evidence-operation-request",
+                str(value["operation_request_id"]),
+                {
+                    "operation_code": value["operation_code"],
+                    "origin_action_id": origin["action_id"],
+                    "origin_iteration_id": origin["iteration_id"],
+                    "operator_id": origin["operator_id"],
+                    "expected_consumer": value["expected_consumer"],
+                },
+            )
+            return self._evidence_request_in_connection(
+                conn, str(value["operation_request_id"])
+            )
+
+    def evidence_operation_request(
+        self, operation_request_id: str
+    ) -> dict[str, Any] | None:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT operation_request_id FROM evidence_operation_requests_v5 "
+                "WHERE operation_request_id=?",
+                (operation_request_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return self._evidence_request_in_connection(conn, operation_request_id)
+
+    def claim_evidence_operation(
+        self,
+        *,
+        executor: str,
+        consumer_id: str,
+        lease_seconds: int = 300,
+        operation_codes: set[str] | None = None,
+    ) -> dict[str, Any] | None:
+        if not str(executor).strip() or not str(consumer_id).strip():
+            raise ControlRepositoryError(
+                "evidence operation executor and consumer are required"
+            )
+        now = _utc_now()
+        expires_at = _future(now, lease_seconds)
+        with self.transaction() as conn:
+            expired = conn.execute(
+                "SELECT operation_request_id, request_json FROM "
+                "evidence_operation_requests_v5 WHERE state='claimed' "
+                "AND claim_expires_at != '' AND claim_expires_at <= ?",
+                (now,),
+            ).fetchall()
+            for row in expired:
+                payload = json.loads(str(row["request_json"]))
+                payload["state"] = "queued"
+                conn.execute(
+                    "UPDATE evidence_operation_requests_v5 SET state='queued', "
+                    "request_json=?, claimed_by='', claim_token='', "
+                    "claim_expires_at='', updated_at=? WHERE operation_request_id=?",
+                    (
+                        _canonical_json(payload),
+                        now,
+                        str(row["operation_request_id"]),
+                    ),
+                )
+            params: list[Any] = [executor]
+            query = (
+                "SELECT operation_request_id FROM evidence_operation_requests_v5 "
+                "WHERE executor=? AND state='queued'"
+            )
+            if operation_codes is not None:
+                codes = sorted(str(value) for value in operation_codes)
+                if not codes:
+                    return None
+                query += " AND operation_code IN (" + ",".join("?" for _ in codes) + ")"
+                params.extend(codes)
+            query += " ORDER BY created_at, operation_request_id LIMIT 1"
+            row = conn.execute(query, params).fetchone()
+            if row is None:
+                return None
+            request_id = str(row["operation_request_id"])
+            token = secrets.token_hex(24)
+            current = self._evidence_request_in_connection(conn, request_id)
+            payload = dict(current["request"])
+            payload["state"] = "claimed"
+            conn.execute(
+                "UPDATE evidence_operation_requests_v5 SET state='claimed', "
+                "request_json=?, claimed_by=?, claim_token=?, claim_expires_at=?, "
+                "claim_attempts=claim_attempts+1, updated_at=? "
+                "WHERE operation_request_id=? AND state='queued'",
+                (
+                    _canonical_json(payload),
+                    consumer_id,
+                    token,
+                    expires_at,
+                    now,
+                    request_id,
+                ),
+            )
+            self._event(
+                conn,
+                "evidence-operation-claimed",
+                "evidence-operation-request",
+                request_id,
+                {"executor": executor, "consumer_id": consumer_id},
+            )
+            return self._evidence_request_in_connection(conn, request_id)
+
+    def route_evidence_operation(
+        self,
+        *,
+        operation_request_id: str,
+        claim_token: str,
+        test_request_id: str = "",
+        wire_attempt_id: str = "",
+        endpoint_id: str = "",
+        execution_environment_id: str = "",
+    ) -> dict[str, Any]:
+        now = _utc_now()
+        with self.transaction() as conn:
+            row = conn.execute(
+                "SELECT * FROM evidence_operation_requests_v5 "
+                "WHERE operation_request_id=?",
+                (operation_request_id,),
+            ).fetchone()
+            if row is None:
+                raise ControlRepositoryError("evidence operation request does not exist")
+            state = str(row["state"])
+            route = (
+                str(row["test_request_id"]),
+                str(row["wire_attempt_id"]),
+                str(row["endpoint_id"]),
+                str(row["execution_environment_id"]),
+            )
+            requested_route = (
+                str(test_request_id),
+                str(wire_attempt_id),
+                str(endpoint_id),
+                str(execution_environment_id),
+            )
+            if state in {"routed", "running", "completed", "failed", "cancelled"}:
+                if route != requested_route:
+                    raise ControlRepositoryError(
+                        "evidence operation route identity changed"
+                    )
+                return self._evidence_request_in_connection(
+                    conn, operation_request_id
+                )
+            if state != "claimed" or str(row["claim_token"]) != claim_token:
+                raise ControlRepositoryError(
+                    "evidence operation route requires the active claim token"
+                )
+            if str(row["claim_expires_at"]) <= now:
+                raise ControlRepositoryError("evidence operation claim has expired")
+            if bool(test_request_id) != bool(wire_attempt_id):
+                raise ControlRepositoryError(
+                    "evidence operation route requires both test request and attempt"
+                )
+            payload = json.loads(str(row["request_json"]))
+            payload["state"] = "routed"
+            conn.execute(
+                "UPDATE evidence_operation_requests_v5 SET state='routed', "
+                "request_json=?, test_request_id=?, wire_attempt_id=?, endpoint_id=?, "
+                "execution_environment_id=?, claimed_by='', claim_token='', "
+                "claim_expires_at='', updated_at=? WHERE operation_request_id=?",
+                (
+                    _canonical_json(payload),
+                    test_request_id,
+                    wire_attempt_id,
+                    endpoint_id,
+                    execution_environment_id,
+                    now,
+                    operation_request_id,
+                ),
+            )
+            self._event(
+                conn,
+                "evidence-operation-routed",
+                "evidence-operation-request",
+                operation_request_id,
+                {
+                    "test_request_id": test_request_id,
+                    "wire_attempt_id": wire_attempt_id,
+                    "endpoint_id": endpoint_id,
+                    "execution_environment_id": execution_environment_id,
+                },
+            )
+            return self._evidence_request_in_connection(conn, operation_request_id)
+
+    def defer_evidence_operation(
+        self,
+        *,
+        operation_request_id: str,
+        claim_token: str,
+        delay_seconds: int,
+        failure_class: str,
+    ) -> dict[str, Any]:
+        if delay_seconds < 0:
+            raise ControlRepositoryError(
+                "evidence operation defer delay cannot be negative"
+            )
+        if not str(failure_class).strip():
+            raise ControlRepositoryError(
+                "evidence operation defer requires a failure class"
+            )
+        now = _utc_now()
+        retry_at = now if delay_seconds == 0 else _future(now, delay_seconds)
+        with self.transaction() as conn:
+            row = conn.execute(
+                "SELECT state, claim_token FROM evidence_operation_requests_v5 "
+                "WHERE operation_request_id=?",
+                (operation_request_id,),
+            ).fetchone()
+            if row is None:
+                raise ControlRepositoryError("evidence operation request does not exist")
+            if str(row["state"]) != "claimed" or str(row["claim_token"]) != claim_token:
+                raise ControlRepositoryError(
+                    "evidence operation defer requires the active claim token"
+                )
+            conn.execute(
+                "UPDATE evidence_operation_requests_v5 SET claimed_by='', "
+                "claim_token='', claim_expires_at=?, updated_at=? "
+                "WHERE operation_request_id=?",
+                (retry_at, now, operation_request_id),
+            )
+            self._event(
+                conn,
+                "evidence-operation-deferred",
+                "evidence-operation-request",
+                operation_request_id,
+                {
+                    "failure_class": failure_class,
+                    "retry_at": retry_at,
+                },
+            )
+            return self._evidence_request_in_connection(conn, operation_request_id)
+
+    def complete_evidence_operation(
+        self, result: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        value = validate_evidence_operation_result(result)
+        request_id = str(value["operation_request_id"])
+        now = _utc_now()
+        with self.transaction() as conn:
+            row = conn.execute(
+                "SELECT * FROM evidence_operation_requests_v5 "
+                "WHERE operation_request_id=?",
+                (request_id,),
+            ).fetchone()
+            if row is None:
+                raise ControlRepositoryError("evidence operation request does not exist")
+            request = json.loads(str(row["request_json"]))
+            for field in (
+                "registry_generation",
+                "registry_digest",
+                "operation_code",
+                "expected_consumer",
+                "origin",
+            ):
+                if value[field] != request[field]:
+                    raise ControlRepositoryError(
+                        f"evidence result changed request identity: {field}"
+                    )
+            expected_execution = {
+                "test_request_id": str(row["test_request_id"]),
+                "wire_attempt_id": str(row["wire_attempt_id"]),
+                "endpoint_id": str(row["endpoint_id"]),
+                "execution_environment_id": str(row["execution_environment_id"]),
+            }
+            if dict(value["execution"]) != expected_execution:
+                raise ControlRepositoryError(
+                    "evidence result execution identity does not match its route"
+                )
+            existing = conn.execute(
+                "SELECT result_json FROM evidence_operation_results_v5 "
+                "WHERE operation_request_id=?",
+                (request_id,),
+            ).fetchone()
+            result_json = _canonical_json(value)
+            if existing is not None:
+                previous = json.loads(str(existing["result_json"]))
+                if previous != value:
+                    raise ControlRepositoryError(
+                        "evidence operation already has a different terminal result"
+                    )
+                return previous
+            if str(row["state"]) not in {"claimed", "routed", "running"}:
+                raise ControlRepositoryError(
+                    f"evidence operation cannot complete from {row['state']}"
+                )
+            conn.execute(
+                "INSERT INTO evidence_operation_results_v5("
+                "operation_result_id, operation_request_id, status, "
+                "expected_consumer, result_json, completed_at) VALUES(?, ?, ?, ?, ?, ?)",
+                (
+                    value["operation_result_id"],
+                    request_id,
+                    value["status"],
+                    value["expected_consumer"],
+                    result_json,
+                    value["completed_at"],
+                ),
+            )
+            terminal_state = str(value["status"])
+            request["state"] = terminal_state
+            conn.execute(
+                "UPDATE evidence_operation_requests_v5 SET state=?, request_json=?, "
+                "claimed_by='', claim_token='', claim_expires_at='', updated_at=? "
+                "WHERE operation_request_id=?",
+                (
+                    terminal_state,
+                    _canonical_json(request),
+                    now,
+                    request_id,
+                ),
+            )
+            self._event(
+                conn,
+                "evidence-operation-completed",
+                "evidence-operation-request",
+                request_id,
+                {
+                    "operation_result_id": value["operation_result_id"],
+                    "status": terminal_state,
+                    "expected_consumer": value["expected_consumer"],
+                    "origin_action_id": request["origin"]["action_id"],
+                    "origin_iteration_id": request["origin"]["iteration_id"],
+                },
+            )
+            return dict(value)
+
+    def evidence_operation_result(
+        self, operation_request_id: str
+    ) -> dict[str, Any] | None:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT result_json FROM evidence_operation_results_v5 "
+                "WHERE operation_request_id=?",
+                (operation_request_id,),
+            ).fetchone()
+            return json.loads(str(row["result_json"])) if row is not None else None
+
+    def evidence_operation_for_test_request(
+        self, test_request_id: str
+    ) -> dict[str, Any] | None:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT operation_request_id FROM evidence_operation_requests_v5 "
+                "WHERE test_request_id=?",
+                (test_request_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return self._evidence_request_in_connection(
+                conn, str(row["operation_request_id"])
+            )
+
+    def evidence_operations_for_origin(
+        self, *, action_id: str = "", iteration_id: str = ""
+    ) -> list[dict[str, Any]]:
+        if not action_id and not iteration_id:
+            raise ControlRepositoryError(
+                "evidence origin query requires action_id or iteration_id"
+            )
+        conditions: list[str] = []
+        params: list[str] = []
+        if action_id:
+            conditions.append("origin_action_id=?")
+            params.append(action_id)
+        if iteration_id:
+            conditions.append("origin_iteration_id=?")
+            params.append(iteration_id)
+        with self.connection() as conn:
+            rows = conn.execute(
+                "SELECT operation_request_id FROM evidence_operation_requests_v5 "
+                "WHERE " + " AND ".join(conditions) +
+                " ORDER BY created_at, operation_request_id",
+                params,
+            ).fetchall()
+            return [
+                self._evidence_request_in_connection(
+                    conn, str(row["operation_request_id"])
+                )
+                for row in rows
+            ]
+
+    def recent_evidence_operations(
+        self,
+        *,
+        operator_id: str,
+        expected_consumer: str,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        if not str(operator_id).strip() or not str(expected_consumer).strip():
+            raise ControlRepositoryError(
+                "recent evidence query requires operator and consumer"
+            )
+        if not 1 <= int(limit) <= 200:
+            raise ControlRepositoryError("recent evidence limit must be in [1, 200]")
+        with self.connection() as conn:
+            rows = conn.execute(
+                "SELECT operation_request_id FROM evidence_operation_requests_v5 "
+                "WHERE operator_id=? AND expected_consumer=? "
+                "ORDER BY created_at DESC, operation_request_id DESC LIMIT ?",
+                (operator_id, expected_consumer, int(limit)),
+            ).fetchall()
+            return [
+                {
+                    **self._evidence_request_in_connection(
+                        conn, str(row["operation_request_id"])
+                    ),
+                    "result": (
+                        json.loads(str(result["result_json"]))
+                        if (
+                            result := conn.execute(
+                                "SELECT result_json FROM evidence_operation_results_v5 "
+                                "WHERE operation_request_id=?",
+                                (str(row["operation_request_id"]),),
+                            ).fetchone()
+                        )
+                        is not None
+                        else None
+                    ),
+                }
+                for row in rows
+            ]
+
+    @staticmethod
+    def _evidence_request_in_connection(
+        conn: sqlite3.Connection, operation_request_id: str
+    ) -> dict[str, Any]:
+        row = conn.execute(
+            "SELECT * FROM evidence_operation_requests_v5 "
+            "WHERE operation_request_id=?",
+            (operation_request_id,),
+        ).fetchone()
+        if row is None:
+            raise ControlRepositoryError("evidence operation request does not exist")
+        request = json.loads(str(row["request_json"]))
+        return {
+            "operation_request_id": str(row["operation_request_id"]),
+            "operation_code": str(row["operation_code"]),
+            "operator_id": str(row["operator_id"]),
+            "origin_action_id": str(row["origin_action_id"]),
+            "origin_iteration_id": str(row["origin_iteration_id"]),
+            "origin_role": str(row["origin_role"]),
+            "expected_consumer": str(row["expected_consumer"]),
+            "executor": str(row["executor"]),
+            "resource_class": str(row["resource_class"]),
+            "state": str(row["state"]),
+            "request": request,
+            "route": {
+                "test_request_id": str(row["test_request_id"]),
+                "wire_attempt_id": str(row["wire_attempt_id"]),
+                "endpoint_id": str(row["endpoint_id"]),
+                "execution_environment_id": str(
+                    row["execution_environment_id"]
+                ),
+            },
+            "claim": {
+                "claimed_by": str(row["claimed_by"]),
+                "claim_token": str(row["claim_token"]),
+                "claim_expires_at": str(row["claim_expires_at"]),
+                "attempts": int(row["claim_attempts"]),
+            },
+            "created_at": str(row["created_at"]),
+            "updated_at": str(row["updated_at"]),
+        }
+
     @staticmethod
     def _require_active_lease(
         conn: sqlite3.Connection,
@@ -2231,6 +2994,64 @@ class _AgentRepository:
         if row is None:
             raise ControlRepositoryError("agent context snapshot not found")
         return json.loads(str(row["snapshot_json"]))
+
+    @staticmethod
+    def _attempt_context_in_connection(
+        conn: sqlite3.Connection,
+        *,
+        action_id: str,
+        attempt_id: str,
+        ordinal: int,
+    ) -> dict[str, Any]:
+        rows = conn.execute(
+            "SELECT attempt_id, ordinal, state, details_json "
+            "FROM agent_action_attempts_v4 WHERE action_id=? AND ordinal<? "
+            "ORDER BY ordinal",
+            (action_id, ordinal),
+        ).fetchall()
+        history: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                details = json.loads(str(row["details_json"] or "{}"))
+            except json.JSONDecodeError:
+                details = {}
+            failure_class = str(details.get("failure_class") or "").strip()
+            validation_error = str(details.get("validation_error") or "").strip()
+            history.append(
+                {
+                    "attempt_id": str(row["attempt_id"]),
+                    "ordinal": int(row["ordinal"]),
+                    "state": str(row["state"]),
+                    "failure_class": failure_class or None,
+                    "validation_error": validation_error or None,
+                }
+            )
+        prior = history[-1] if history else None
+        output_repair: dict[str, Any] | None = None
+        if (
+            prior is not None
+            and prior["failure_class"] == "agent-output-validation"
+            and prior["validation_error"]
+        ):
+            output_repair = {
+                "prior_attempt_id": prior["attempt_id"],
+                "prior_attempt_ordinal": prior["ordinal"],
+                "failure_class": prior["failure_class"],
+                "validation_error": prior["validation_error"],
+                "remaining_correction_turns": 1,
+            }
+        mode = (
+            "output_repair"
+            if output_repair is not None
+            else ("execution_retry" if history else "initial")
+        )
+        return {
+            "attempt_id": attempt_id,
+            "ordinal": ordinal,
+            "mode": mode,
+            "history": history,
+            "output_repair": output_repair,
+        }
 
     @staticmethod
     def _agent_action_in_connection(

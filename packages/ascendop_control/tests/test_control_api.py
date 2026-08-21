@@ -10,7 +10,11 @@ from urllib.request import Request, urlopen
 
 from ascendop_control.api import ControlApiServer
 from ascendop_control.api.discovery import publish_endpoint, retire_endpoint
-from ascendop_control.storage import CONTROL_EXTENSION_SQL, ControlStore
+from ascendop_control.storage import (
+    CONTROL_EXTENSION_SQL,
+    CONTROL_SCHEMA_VERSION,
+    ControlStore,
+)
 
 
 def test_control_api_discovery_is_atomic_and_owner_fenced(tmp_path: Path) -> None:
@@ -119,6 +123,19 @@ def test_rest_commands_and_sse_resume_use_same_database(tmp_path: Path) -> None:
                 else:
                     assert item["pool_id"] == "codex-ide-solver"
 
+        for resource, count in (
+            ("operator-workflows", 0),
+            ("workflow-traces", 1),
+        ):
+            query = Request(
+                f"http://127.0.0.1:{port}/api/v1/{resource}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            with urlopen(query, timeout=5) as response:
+                payload = json.loads(response.read())
+                assert payload["resource_type"] == resource
+                assert payload["attributes"]["count"] == count
+
         connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
         connection.request(
             "GET",
@@ -185,7 +202,7 @@ def _store(tmp_path: Path) -> ControlStore:
     conn = sqlite3.connect(path)
     conn.executescript(
         "CREATE TABLE metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);"
-        "INSERT INTO metadata(key,value) VALUES('schema_version','12');"
+        f"INSERT INTO metadata(key,value) VALUES('schema_version','{CONTROL_SCHEMA_VERSION}');"
         "CREATE TABLE control_events(sequence INTEGER PRIMARY KEY AUTOINCREMENT,"
         "event_at TEXT NOT NULL,event_type TEXT NOT NULL,entity_type TEXT NOT NULL,"
         "entity_id TEXT NOT NULL,payload_json TEXT NOT NULL);"

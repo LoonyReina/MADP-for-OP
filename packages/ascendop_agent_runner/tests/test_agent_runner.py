@@ -8,12 +8,19 @@ from pathlib import Path
 
 from ascendop_agent_runner.drivers import AgentDriver, DriverProbe, DriverResult
 from ascendop_agent_runner.runner import AgentRunner
-from ascendop_control.storage import CONTROL_EXTENSION_SQL, ControlStore
+from ascendop_control.storage import (
+    CONTROL_EXTENSION_SQL,
+    CONTROL_SCHEMA_VERSION,
+    ControlStore,
+)
 from ascendop_protocol.agent import (
+    AGENT_ACTION_RECEIPT_SCHEMA,
     AGENT_ACTION_SCHEMA,
     AGENT_CONTEXT_SNAPSHOT_SCHEMA,
     AGENT_POOL_SCHEMA,
 )
+from ascendop_protocol.actor import flow_v5_catalog_digest
+from ascendop_daemon.automation.agent_workspace import AgentWorkspace
 
 
 class FakeCodexDriver:
@@ -43,7 +50,8 @@ class FakeCodexDriver:
         heartbeat,
         resume_session_id: str = "",
     ) -> DriverResult:
-        assert "FLOW V4 ACTION" in prompt
+        assert "FLOW V5 ACTION CONTRACT" in prompt
+        assert flow_v5_catalog_digest() in prompt
         assert "AGENT OUTPUT AUTHORING CONTRACT" in prompt
         heartbeat()
         run_root.mkdir(parents=True, exist_ok=True)
@@ -110,6 +118,15 @@ class AdapterFailDriver(FakeCodexDriver):
             raw_output_path=raw,
             stderr_path=stderr,
         )
+
+
+class RepairAwareCodexDriver(FakeCodexDriver):
+    def start(self, **kwargs) -> DriverResult:
+        prompt = str(kwargs["prompt"])
+        assert "OUTPUT REPAIR DIRECTIVE (authoritative)" in prompt
+        assert "created_at must be non-empty text" in prompt
+        assert "one bounded correction turn" in prompt
+        return super().start(**kwargs)
 
 
 class AuthFailDriver(FakeCodexDriver):
@@ -208,6 +225,7 @@ def test_runner_executes_in_isolated_workspace_and_records_iteration(
         agent_id=agent_id,
     )
     runbook_digest = hashlib.sha256(runbook.read_bytes()).hexdigest()
+    source_digest = AgentWorkspace(root).digest(source)
     action = {
         "schema": AGENT_ACTION_SCHEMA,
         "action_id": "action-runner-1",
@@ -225,7 +243,7 @@ def test_runner_executes_in_isolated_workspace_and_records_iteration(
         "runbook_digest": runbook_digest,
         "origin_workspace": "operators_workspace/HardSwish",
         "candidate_version": "HardSwish_V1_1",
-        "candidate_identity": {"execution_source_digest": "b" * 64},
+        "candidate_identity": {"execution_source_digest": source_digest},
         "write_scope": ["candidate.txt"],
         "output_contracts": [],
         "tool_budget": {"max_turn_seconds": 60},
@@ -239,7 +257,7 @@ def test_runner_executes_in_isolated_workspace_and_records_iteration(
         "role": "solver",
         "board_revision": "board-1",
         "board_digest": "a" * 64,
-        "candidate_identity": {"execution_source_digest": "b" * 64},
+        "candidate_identity": {"execution_source_digest": source_digest},
         "gate": {"owner": "solver"},
         "recent_results": [],
         "official_evidence": [],
@@ -247,9 +265,15 @@ def test_runner_executes_in_isolated_workspace_and_records_iteration(
         "permitted_operations": ["edit-source"],
         "created_at": "2026-08-08T00:00:00+00:00",
     }
-    store.create_agent_action(action, context)
+    stored = store.create_agent_action(action, context)
+    store.synchronize_workflow_agent_gate_heads(
+        [stored], observed_at="2026-08-08T00:00:00+00:00"
+    )
     result = runner.run_once()
     assert result["state"] == "completed"
+    assert result["outcome"]["disposition"] == "proposed_change"
+    assert result["outcome"]["outputs"][0]["output_kind"] == "source-change"
+    assert result["promotion"]["action_kind"] == "promote-agent-source"
     assert (source / "candidate.txt").read_text(encoding="ascii") == "original\n"
     isolated = root / result["workspace"] / "candidate.txt"
     assert isolated.read_text(encoding="ascii") == "changed\n"
@@ -352,20 +376,72 @@ def test_runner_defers_preflight_error_to_central_retry_controller(
     assert leases["state"] == "released"
 
 
-def test_runner_defers_zero_change_adapter_failure(tmp_path: Path) -> None:
+def test_cli_runner_receives_protocol_owned_output_repair_context(
+    tmp_path: Path,
+) -> None:
+    root, store, runner = _prepared_action(
+        tmp_path,
+        RepairAwareCodexDriver(),
+        "repair-ctx",
+    )
+    first = store.claim_agent_action(
+        runner_id=runner.runner_id,
+        boot_id=runner.boot_id,
+        lease_seconds=60,
+    )
+    assert first is not None
+    store.complete_agent_action(
+        {
+            "schema": AGENT_ACTION_RECEIPT_SCHEMA,
+            "action_id": first["action"]["action_id"],
+            "iteration_id": first["action"]["iteration_id"],
+            "agent_id": first["agent"]["agent_id"],
+            "lease_id": first["lease"]["lease_id"],
+            "status": "failed",
+            "started_at": first["lease"]["acquired_at"],
+            "completed_at": "2026-08-08T00:01:00+00:00",
+            "completion": {
+                "failure_class": "agent-output-validation",
+                "validation_error": "created_at must be non-empty text",
+                "runner_generation": "runner-old",
+                "agent_execution_contract_digest": "a" * 64,
+            },
+            "artifacts": [],
+        },
+        lease_token=str(first["lease"]["lease_token"]),
+    )
+    candidate = store.agent_retry_candidates()[0]
+    store.apply_agent_retry_decision(
+        action_id=str(candidate["action_id"]),
+        attempt_id=str(candidate["current_attempt_id"]),
+        decision="retry",
+        reason="bounded typed output correction",
+        code_generation="daemon-generation-repair",
+        lease_seconds=60,
+    )
+
+    completed = runner.run_once()
+
+    assert completed["state"] == "completed", completed
+    assert (root / completed["workspace"] / "candidate.txt").is_file()
+
+
+def test_runner_records_zero_change_adapter_failure_for_central_retry(
+    tmp_path: Path,
+) -> None:
     _, store, runner = _prepared_action(
         tmp_path, AdapterFailDriver(), "adapter-failure"
     )
 
     result = runner.run_once()
 
-    assert result["state"] == "retry-pending"
+    assert result["state"] == "failed"
     assert result["error"]["failure_class"] == "agent-adapter"
     assert result["error"]["exit_code"] == 2
     assert result["error"]["changed_paths"] == []
     assert len(result["error"]["artifacts"]) == 2
     action = store.agent_action("action-adapter-failure")
-    assert action is not None and action["state"] == "retry-pending"
+    assert action is not None and action["state"] == "failed"
 
 
 def test_retry_exhaustion_terminalizes_attempt_once(tmp_path: Path) -> None:
@@ -390,7 +466,7 @@ def test_retry_exhaustion_terminalizes_attempt_once(tmp_path: Path) -> None:
         code_generation="daemon-generation-terminal",
     )
 
-    assert pending["state"] == "retry-pending"
+    assert pending["state"] == "failed"
     assert terminal["state"] == "failed"
     assert repeated["state"] == "failed"
     exhausted_candidates = store.agent_retry_candidates()
@@ -436,7 +512,7 @@ def test_runtime_auth_failure_quarantines_agent_across_runner_restart(
 
     pending = runner.run_once()
     agent_id = f"codex-cli:{socket.gethostname()}"
-    assert pending["state"] == "retry-pending"
+    assert pending["state"] == "failed"
     assert store.agent_registration(agent_id)["health_state"] == "degraded"
     runner.maintain_registrations(force=True)
     assert store.agent_registration(agent_id)["health_state"] == "degraded"
@@ -475,7 +551,7 @@ def test_auth_failure_rebinds_same_action_and_lease_to_healthy_agent(
     )
     second = runner.run_once()
 
-    assert first["state"] == "retry-pending"
+    assert first["state"] == "failed"
     assert first["driver"] == "claude-code-cli"
     assert authorized["state"] == "queued"
     assert authorized["assigned_agent_id"] == ""
@@ -621,6 +697,7 @@ def _prepared_action(
         runner_id=f"runner-{suffix}",
     )
     runner.probe_and_register()
+    source_digest = AgentWorkspace(root).digest(source)
     action = {
         "schema": AGENT_ACTION_SCHEMA,
         "action_id": f"action-{suffix}",
@@ -638,7 +715,7 @@ def _prepared_action(
         "runbook_digest": hashlib.sha256(runbook.read_bytes()).hexdigest(),
         "origin_workspace": "operators_workspace/HardSwish",
         "candidate_version": f"HardSwish_V1_{suffix}",
-        "candidate_identity": {"execution_source_digest": "b" * 64},
+        "candidate_identity": {"execution_source_digest": source_digest},
         "write_scope": ["candidate.txt"],
         "output_contracts": [],
         "tool_budget": {"max_turn_seconds": 60},
@@ -652,7 +729,7 @@ def _prepared_action(
         "role": "solver",
         "board_revision": f"board-{suffix}",
         "board_digest": "a" * 64,
-        "candidate_identity": {"execution_source_digest": "b" * 64},
+        "candidate_identity": {"execution_source_digest": source_digest},
         "gate": {"owner": "solver"},
         "recent_results": [],
         "official_evidence": [],
@@ -660,7 +737,10 @@ def _prepared_action(
         "permitted_operations": ["edit-source"],
         "created_at": "2026-08-08T00:00:00+00:00",
     }
-    store.create_agent_action(action, context)
+    stored = store.create_agent_action(action, context)
+    store.synchronize_workflow_agent_gate_heads(
+        [stored], observed_at="2026-08-08T00:00:00+00:00"
+    )
     return root, store, runner
 
 
@@ -673,7 +753,8 @@ def _store(
     conn = sqlite3.connect(path)
     conn.executescript(
         "CREATE TABLE metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);"
-        "INSERT INTO metadata(key,value) VALUES('schema_version','12');"
+        "INSERT INTO metadata(key,value) "
+        f"VALUES('schema_version','{CONTROL_SCHEMA_VERSION}');"
         "CREATE TABLE control_events(sequence INTEGER PRIMARY KEY AUTOINCREMENT,"
         "event_at TEXT NOT NULL,event_type TEXT NOT NULL,entity_type TEXT NOT NULL,"
         "entity_id TEXT NOT NULL,payload_json TEXT NOT NULL);"

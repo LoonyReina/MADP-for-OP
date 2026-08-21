@@ -1,0 +1,23 @@
+{
+  "schema": "ascendop.agent-action-outcome.v1",
+  "action_id": "actor-action-demo-1",
+  "execution_status": "completed",
+  "disposition": "request_evidence",
+  "failure_class": null,
+  "summary": "Comparable profiler evidence is required before a source change is defensible.",
+  "outputs": [],
+  "evidence_refs": ["operators_testresult/Demo/Demo_V1_1/RESULT.md"],
+  "requested_operation": {
+    "operation_code": "profile.collect",
+    "parameters": {
+      "candidate_id": "candidate-demo-1",
+      "test_version": "Demo_V1_1",
+      "case_version": "case_v001",
+      "profiler_mode": "primary-all-cases"
+    },
+    "expected_consumer": "solver",
+    "resume_condition": "profile evidence is indexed for Demo_V1_1"
+  },
+  "blocker": null,
+  "completed_at": "2026-08-17T00:10:00Z"
+}

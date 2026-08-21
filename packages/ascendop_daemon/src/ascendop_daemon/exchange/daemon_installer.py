@@ -87,6 +87,7 @@ def install_daemon_runtime(
     variable_registry: Path,
     change_impact_policy: Path,
     daemon_config: Path,
+    developer_runbook: Path,
     system_registry: Path,
     workflow_adapter: Path,
     workspace_root: Path,
@@ -111,6 +112,7 @@ def install_daemon_runtime(
     expected_variable_registry_sha256: str,
     expected_change_impact_policy_sha256: str,
     expected_daemon_config_sha256: str,
+    expected_developer_runbook_sha256: str,
     expected_system_registry_sha256: str,
     expected_workflow_adapter_sha256: str,
     release_generation: str,
@@ -136,6 +138,7 @@ def install_daemon_runtime(
     variable_registry = variable_registry.resolve()
     change_impact_policy = change_impact_policy.resolve()
     daemon_config = daemon_config.resolve()
+    developer_runbook = developer_runbook.resolve()
     system_registry = system_registry.resolve()
     workflow_adapter = workflow_adapter.resolve()
     workspace_root = workspace_root.resolve()
@@ -167,6 +170,7 @@ def install_daemon_runtime(
         (expected_variable_registry_sha256, "variable registry SHA-256"),
         (expected_change_impact_policy_sha256, "change-impact policy SHA-256"),
         (expected_daemon_config_sha256, "daemon config SHA-256"),
+        (expected_developer_runbook_sha256, "Developer runbook SHA-256"),
         (expected_system_registry_sha256, "system registry SHA-256"),
         (expected_workflow_adapter_sha256, "workflow adapter SHA-256"),
         (release_generation, "release generation"),
@@ -208,6 +212,10 @@ def install_daemon_runtime(
         )
     if not daemon_config.is_file():
         raise DaemonInstallError(f"daemon config is missing: {daemon_config}")
+    if not developer_runbook.is_file() or developer_runbook.is_symlink():
+        raise DaemonInstallError(
+            f"Developer runbook is missing or unsafe: {developer_runbook}"
+        )
     if not system_registry.is_file():
         raise DaemonInstallError(f"system registry is missing: {system_registry}")
     if not workflow_adapter.is_file() or workflow_adapter.is_symlink():
@@ -296,6 +304,13 @@ def install_daemon_runtime(
         destination_name="daemon-config.json",
         expected_sha256=expected_daemon_config_sha256,
         label="daemon config",
+    )
+    installed_developer_runbook = _install_policy_artifact(
+        source=developer_runbook,
+        runtime_root=runtime_root / "policies" / release_generation,
+        destination_name="developer-capability-runbook.md",
+        expected_sha256=expected_developer_runbook_sha256,
+        label="Developer runbook",
     )
     installed_system_registry = _install_policy_artifact(
         source=system_registry,
@@ -417,6 +432,8 @@ def install_daemon_runtime(
         "change_impact_policy_path": str(installed_change_impact_policy),
         "change_impact_policy_sha256": expected_change_impact_policy_sha256,
         "daemon_config_path": str(installed_daemon_config),
+        "developer_runbook_path": str(installed_developer_runbook),
+        "developer_runbook_sha256": expected_developer_runbook_sha256,
         "system_registry_path": str(installed_system_registry),
         "workflow_adapter_path": str(installed_workflow_adapter),
         "workflow_adapter_sha256": expected_workflow_adapter_sha256,
@@ -504,6 +521,7 @@ def install_daemon_runtime(
         "variable_registry_sha256": expected_variable_registry_sha256,
         "change_impact_policy_sha256": expected_change_impact_policy_sha256,
         "daemon_config_sha256": expected_daemon_config_sha256,
+        "developer_runbook_sha256": expected_developer_runbook_sha256,
         "system_registry_sha256": expected_system_registry_sha256,
         "workflow_adapter_sha256": expected_workflow_adapter_sha256,
         "previous_release_generation": str(previous.get("release_generation") or ""),
@@ -974,42 +992,15 @@ def _variable_default_from_path(
     variable_id: str,
     fallback: int,
 ) -> int:
-    registry = _read_json(path) if path.is_file() else {}
-    variables = registry.get("variables")
-    if not isinstance(variables, list):
-        return fallback
-    matches = [
-        row
-        for row in variables
-        if isinstance(row, dict) and str(row.get("id") or "") == variable_id
-    ]
-    if len(matches) != 1:
-        return fallback
-    try:
-        value = int(matches[0]["default"])
-    except (KeyError, TypeError, ValueError):
-        return fallback
-    return value if value > 0 else fallback
+    return int(
+        _installer_validation().variable_default_from_path(
+            path, variable_id=variable_id, fallback=fallback
+        )
+    )
 
 
 def _daemon_files(root: Path) -> Iterable[Path]:
-    for name in (
-        "pyproject.toml",
-        "daemon.py",
-        "launch_s5_910b.py",
-        "launcher_bootstrap.py",
-        "manage_s5_910b.ps1",
-    ):
-        yield root / name
-    package = root / "src" / "ascendop_daemon"
-    yield from (
-        path
-        for path in sorted(package.rglob("*"), key=lambda item: item.as_posix())
-        if path.is_file()
-        and not path.is_symlink()
-        and "__pycache__" not in path.parts
-        and path.suffix not in {".pyc", ".pyo"}
-    )
+    return _installer_validation().daemon_files(root)
 
 
 def _safe_extract(archive: Path, destination: Path) -> None:
@@ -1089,6 +1080,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--variable-registry", type=Path, required=True)
     parser.add_argument("--change-impact-policy", type=Path, required=True)
     parser.add_argument("--daemon-config", type=Path, required=True)
+    parser.add_argument("--developer-runbook", type=Path, required=True)
     parser.add_argument("--system-registry", type=Path, required=True)
     parser.add_argument("--workflow-adapter", type=Path, required=True)
     parser.add_argument("--workspace-root", type=Path, required=True)
@@ -1117,6 +1109,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--expected-variable-registry-sha256", required=True)
     parser.add_argument("--expected-change-impact-policy-sha256", required=True)
     parser.add_argument("--expected-daemon-config-sha256", required=True)
+    parser.add_argument("--expected-developer-runbook-sha256", required=True)
     parser.add_argument("--expected-system-registry-sha256", required=True)
     parser.add_argument("--expected-workflow-adapter-sha256", required=True)
     parser.add_argument("--release-generation", required=True)
@@ -1144,6 +1137,7 @@ def main(argv: list[str] | None = None) -> int:
             variable_registry=args.variable_registry,
             change_impact_policy=args.change_impact_policy,
             daemon_config=args.daemon_config,
+            developer_runbook=args.developer_runbook,
             system_registry=args.system_registry,
             workflow_adapter=args.workflow_adapter,
             workspace_root=args.workspace_root,
@@ -1182,6 +1176,9 @@ def main(argv: list[str] | None = None) -> int:
                 args.expected_change_impact_policy_sha256
             ),
             expected_daemon_config_sha256=args.expected_daemon_config_sha256,
+            expected_developer_runbook_sha256=(
+                args.expected_developer_runbook_sha256
+            ),
             expected_system_registry_sha256=args.expected_system_registry_sha256,
             expected_workflow_adapter_sha256=args.expected_workflow_adapter_sha256,
             release_generation=args.release_generation,

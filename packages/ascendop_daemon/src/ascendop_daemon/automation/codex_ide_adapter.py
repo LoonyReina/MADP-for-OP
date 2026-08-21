@@ -1,39 +1,35 @@
 from __future__ import annotations
 
-import hashlib
 import json
-import os
-import tempfile
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
-from ascendop_protocol.agent import (
-    AGENT_ACTION_RECEIPT_SCHEMA,
-    AGENT_REGISTRATION_SCHEMA,
-    AGENT_TURN_DELIVERY_SCHEMA,
-    render_agent_output_authoring_contract,
-    validate_agent_turn_delivery,
-)
 from ascendop_daemon.automation.agent_promotions import AgentPromotionQueue
 from ascendop_daemon.automation.agent_workspace import AgentWorkspace
+from ascendop_daemon.automation.agent_completion import AgentCompletionService
+from ascendop_daemon.automation.agent_turn_completion import (
+    AgentTurnCompletionError,
+    prepare_agent_turn_completion,
+)
 from ascendop_daemon.automation.candidate_proposals import CandidateProposalPublisher
 from ascendop_daemon.automation.case_proposals import CaseProposalPublisher
 from ascendop_daemon.automation.agent_outputs import (
     AgentOutputBroker,
-    AgentOutputError,
 )
 from ascendop_daemon.automation.agent_workspace import (
     AgentSourceIdentityChanged,
-    AgentWorkspaceError,
 )
 from ascendop_daemon.automation.codex_ide_preflight import (
     superseded_adapter_state,
     superseded_receipt,
 )
+from ascendop_daemon.automation.codex_ide_adapter_support import (
+    CodexIdeAdapterSupportMixin,
+    _promotion_action_id,
+    _utc_now,
+)
 from ascendop_daemon.automation.codex_ide_settings import (
     ADAPTER_ID,
-    TOKEN_CHARS,
     CodexIdeAdapterError,
     CodexIdeAdapterSettings,
     agent_id,
@@ -49,7 +45,7 @@ from ascendop_daemon.core.models import (
 )
 
 
-class CodexIdeTaskAdapter:
+class CodexIdeTaskAdapter(CodexIdeAdapterSupportMixin):
     """DB-backed adapter boundary for long-lived Codex IDE tasks.
 
     The app-side consumer performs the actual task-tool call. This class owns
@@ -76,6 +72,14 @@ class CodexIdeTaskAdapter:
             database,
             self.workspace,
             code_generation=self.code_generation,
+        )
+        self.completions = AgentCompletionService(
+            self.root,
+            database,
+            code_generation=self.code_generation,
+            workspace=self.workspace,
+            outputs=self.outputs,
+            promotions=self.promotions,
         )
         self.candidate_proposals = CandidateProposalPublisher(
             self.root,
@@ -428,16 +432,16 @@ class CodexIdeTaskAdapter:
             raise CodexIdeAdapterError(
                 "a delivery with a recorded turn_id cannot be marked not delivered"
             )
-        if verification != "exact-action-marker-absent":
+        if verification != "exact-delivery-marker-absent":
             raise CodexIdeAdapterError(
-                "not-delivered requires exact-action-marker-absent verification"
+                "not-delivered requires exact-delivery-marker-absent verification"
             )
         result = self.database.defer_agent_action_retry(
             action_id=action_id,
             lease_token=str(state["lease_token"]),
             failure={
                 "failure_class": "agent-adapter",
-                "error": "target task has no exact action marker after reconciliation",
+                "error": "target task has no exact delivery marker after reconciliation",
                 "delivery_publish_state": "not-published",
                 "verification": verification,
                 "runner_generation": self.settings.adapter_generation,
@@ -470,182 +474,73 @@ class CodexIdeTaskAdapter:
         *,
         action_id: str,
         consumer_id: str,
-        status: str,
-        summary: str,
+        status: str = "",
+        summary: str = "",
         artifacts: list[str] | None = None,
         failure_class: str = "",
+        completion_envelope: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
-        if status not in {
-            "completed",
-            "failed",
-            "interrupted",
-            "cancelled",
-            "uncertain",
-        }:
-            raise CodexIdeAdapterError(f"unsupported Agent completion status: {status}")
-        reported_status = status
-        if status == "interrupted":
-            status = "failed"
-            failure_class = failure_class or "adapter-execution"
         state = self._require_state(action_id, consumer_id)
-        action_record = self.database.agent_action(action_id)
-        if action_record is None:
-            raise CodexIdeAdapterError(f"Agent action does not exist: {action_id}")
-        action = dict(action_record["action"])
-        seal: dict[str, Any] | None = None
-        output_seal: dict[str, Any] | None = None
-        artifact_paths = list(artifacts or [])
-        completion: dict[str, Any] = {
-            "summary": summary,
-            "session_id": str(state.get("turn_id") or ""),
-            "target_id": str(state["target_id"]),
-            "adapter_id": ADAPTER_ID,
-            "runner_generation": self.settings.adapter_generation,
-            "agent_execution_contract_digest": self.execution_contract_digest,
-        }
-        if reported_status != status:
-            completion["reported_status"] = reported_status
-        if failure_class:
-            completion["failure_class"] = failure_class
-        if status == "completed" and not self.database.workflow_agent_action_is_current(
-            action_id
-        ):
-            status = "cancelled"
-            completion.update(
-                {
-                    "failure_class": "agent-gate-obsolete",
-                    "cancellation_reason": "workflow-gate-no-longer-current",
-                    "reported_status": "completed",
-                }
+        try:
+            prepared = prepare_agent_turn_completion(
+                database=self.database,
+                action_id=action_id,
+                state=state,
+                delivery=(
+                    self._read_delivery(action_id)
+                    if completion_envelope is not None
+                    else None
+                ),
+                completion_envelope=completion_envelope,
+                status=status,
+                summary=summary,
+                failure_class=failure_class,
+                runner_id=self.settings.manager_runner_id,
+                lease_seconds=self.settings.lease_seconds,
+                observed_at=_utc_now(),
             )
-        if status == "completed":
-            try:
-                seal = self.workspace.seal(action)
-                seal_path = self.workspace.run_root(action_id) / "source-seal.json"
-                artifact_paths.append(seal_path.relative_to(self.root).as_posix())
-                workspace = self.workspace.run_root(action_id) / "workspace"
-                output_seal = self.outputs.seal(action, workspace)
-                output_seal_path = (
-                    self.workspace.run_root(action_id) / "output-seal.json"
-                )
-                artifact_paths.append(
-                    output_seal_path.relative_to(self.root).as_posix()
-                )
-                changed_code = any(
-                    str(path).startswith(("op_host/", "op_kernel/"))
-                    for path in seal["changed_paths"]
-                )
-                proposed_candidate = any(
-                    str(item.get("output_kind") or "") == "solver-candidate-proposal"
-                    for item in output_seal["outputs"]
-                )
-                candidate_contract = any(
-                    str(item.get("output_kind") or "") == "solver-candidate-proposal"
-                    for item in action.get("output_contracts", [])
-                )
-                if (
-                    action.get("role") == "solver"
-                    and changed_code
-                    and candidate_contract
-                    and not proposed_candidate
-                ):
-                    raise CodexIdeAdapterError(
-                        "Solver changed op_host/op_kernel without a candidate proposal"
-                    )
-                if not seal["changed_paths"] and not output_seal["outputs"]:
-                    raise CodexIdeAdapterError(
-                        "completed Agent action produced no durable source or workflow output"
-                    )
-                completion.update(
-                    {
-                        "source_before_digest": seal["source_before_digest"],
-                        "source_after_digest": seal["source_after_digest"],
-                        "changed_paths": seal["changed_paths"],
-                        "workflow_outputs": output_seal["outputs"],
-                        "out_of_scope_paths": [],
-                    }
-                )
-            except AgentWorkspaceError as exc:
-                status = "failed"
-                completion.update(
-                    {
-                        "failure_class": "protocol",
-                        "validation_error": str(exc),
-                    }
-                )
-                seal = None
-                output_seal = None
-            except (AgentOutputError, CodexIdeAdapterError) as exc:
-                status = "failed"
-                completion.update(
-                    {
-                        "failure_class": "agent-output-validation",
-                        "validation_error": str(exc),
-                    }
-                )
-                seal = None
-                output_seal = None
-        receipt = {
-            "schema": AGENT_ACTION_RECEIPT_SCHEMA,
-            "action_id": action_id,
-            "iteration_id": str(action["iteration_id"]),
-            "agent_id": str(state["agent_id"]),
-            "lease_id": str(state["lease_id"]),
-            "status": status,
-            "started_at": str(state.get("delivered_at") or state["claimed_at"]),
-            "completed_at": _utc_now(),
-            "completion": completion,
-            "artifacts": sorted(set(artifact_paths)),
-        }
-        terminal = self.database.complete_agent_action(
-            receipt,
+        except AgentTurnCompletionError as exc:
+            raise CodexIdeAdapterError(str(exc)) from exc
+        if prepared.state_updates is not None:
+            state.update(prepared.state_updates)
+            self._write_state(action_id, state)
+        status = prepared.terminal_status
+        structured_result = prepared.structured_result
+        recovery = prepared.reconciliation
+        native_session_id = str(state.get("turn_id") or state["target_id"])
+        result = self.completions.complete(
+            action_id=action_id,
             lease_token=str(state["lease_token"]),
+            lease_id=str(state["lease_id"]),
+            agent_id=str(state["agent_id"]),
+            started_at=str(state.get("delivered_at") or state["claimed_at"]),
+            native_outcome={
+                "schema": "ascendop.native-turn-outcome.v1",
+                "action_id": action_id,
+                "native_session_id": native_session_id,
+                "native_turn_id": native_session_id,
+                "terminal_status": status,
+                "structured_result": structured_result,
+                "artifact_refs": list(artifacts or []),
+                "telemetry": {"usage": {}, "skills": {}},
+                "observed_at": _utc_now(),
+            },
+            completion_metadata={
+                "target_id": str(state["target_id"]),
+                "adapter_id": ADAPTER_ID,
+                "runner_generation": self.settings.adapter_generation,
+                "agent_execution_contract_digest": self.execution_contract_digest,
+                **(
+                    {"receipt_reconciliation": recovery}
+                    if recovery is not None
+                    else {}
+                ),
+            },
         )
-        terminal_state = str(terminal["state"])
-        if terminal_state != str(receipt["status"]):
-            committed_receipt = self.database.agent_action_receipt(action_id)
-            if committed_receipt is None:
-                raise CodexIdeAdapterError(
-                    "terminal Agent action has no committed receipt"
-                )
-            receipt = committed_receipt
+        terminal_state = str(result["terminal"]["state"])
         state.update({"phase": terminal_state, "updated_at": _utc_now()})
         self._write_state(action_id, state)
-        promotable = (
-            status == "completed"
-            and terminal_state == "completed"
-            and self.database.workflow_agent_action_is_current(action_id)
-        )
-        output_promotion = (
-            self.promotions.enqueue_output(
-                action,
-                output_seal,
-                source_seal=(
-                    seal if seal and seal.get("changed_paths") else None
-                ),
-            )
-            if promotable and output_seal and output_seal["outputs"]
-            else None
-        )
-        promotion = (
-            output_promotion
-            if output_promotion is not None and seal and seal.get("changed_paths")
-            else (
-                (
-                    self.promotions.enqueue_case(action, seal)
-                    if str(action.get("role") or "") == "tester"
-                    else self.promotions.enqueue_source(action, seal)
-                )
-                if promotable and seal and seal["changed_paths"]
-                else None
-            )
-        )
-        return {
-            "terminal": terminal,
-            "receipt": receipt,
-            "promotion": promotion,
-            "output_promotion": output_promotion,
-        }
+        return result
 
     def reconcile_promotions(self) -> list[dict[str, Any]]:
         if not self.settings.enabled:
@@ -875,395 +770,3 @@ class CodexIdeTaskAdapter:
             "turn_id": turn_id,
             "delivery_id": str(existing["delivery_id"]),
         }
-
-    def recover_legacy_evidence_validation(
-        self,
-        *,
-        action_id: str,
-        verification: str,
-    ) -> dict[str, Any]:
-        """Reclassify one proven legacy zero-byte evidence false failure."""
-
-        if verification != "zero-byte-evidence-blobs-match":
-            raise CodexIdeAdapterError(
-                "legacy evidence recovery requires zero-byte-evidence-blobs-match"
-            )
-        action = self.database.agent_action(action_id)
-        if action is None:
-            raise CodexIdeAdapterError(f"Agent action does not exist: {action_id}")
-        proof = self.workspace.audit_legacy_zero_byte_evidence(action_id)
-        recovered = self.database.reclassify_legacy_agent_evidence_validation(
-            action_id=action_id,
-            attempt_id=str(action["current_attempt_id"]),
-            proof=proof,
-        )
-        return {
-            "schema": "ascendop.codex-ide-evidence-recovery.v1",
-            "state": "reclassified",
-            "action_id": action_id,
-            "attempt_id": str(action["current_attempt_id"]),
-            "failure_class": "agent-output-validation",
-            "proof": proof,
-            "action_state": str(recovered["state"]),
-        }
-
-    def _registration(self, target: Mapping[str, str]) -> dict[str, Any]:
-        return {
-            "schema": AGENT_REGISTRATION_SCHEMA,
-            "agent_id": target["agent_id"],
-            "driver": "codex-ide-task",
-            "executable": f"codex-ide-task://{target['task_id']}",
-            "executable_digest": self.source_digest,
-            "observed_version": self.settings.adapter_generation,
-            "registration_generation": identity_digest(
-                {
-                    "adapter_generation": self.settings.adapter_generation,
-                    "operator_id": target["operator_id"],
-                    "role": target["role"],
-                    "task_id": target["task_id"],
-                }
-            ),
-            "capabilities": {
-                "stream_json": False,
-                "resume": True,
-                "structured_output": True,
-                "task_visibility": True,
-                "isolated_workspace": True,
-            },
-            "target_kind": "codex-ide-task",
-            "target_id": target["task_id"],
-            "operator_id": target["operator_id"],
-            "role": target["role"],
-            "observed_at": _utc_now(),
-        }
-
-    def _prepare_delivery(
-        self,
-        claimed: Mapping[str, Any],
-        *,
-        consumer_id: str,
-    ) -> dict[str, Any]:
-        action = dict(claimed["action"])
-        context = dict(claimed["context"])
-        agent = dict(claimed["agent"])
-        existing = self._existing_delivery(claimed)
-        if existing is not None:
-            return existing
-        workflow_evidence = context.get("workflow_evidence", [])
-        if not isinstance(workflow_evidence, list) or not all(
-            isinstance(item, Mapping) for item in workflow_evidence
-        ):
-            raise CodexIdeAdapterError(
-                "Agent workflow evidence must be a list of objects"
-            )
-        reference_evidence = context.get("reference_evidence", [])
-        if not isinstance(reference_evidence, list) or not all(
-            isinstance(item, Mapping) for item in reference_evidence
-        ):
-            raise CodexIdeAdapterError(
-                "Agent reference evidence must be a list of objects"
-            )
-        _run_root, workspace, _before = self.workspace.stage(
-            action,
-            [*workflow_evidence, *reference_evidence],
-        )
-        self.outputs.stage(action, workspace)
-        target = self._target_for_agent(str(agent["agent_id"]))
-        prompt = self._prompt(action, context, workspace, str(claimed["attempt_id"]))
-        attempt_id = str(claimed["attempt_id"])
-        delivery = validate_agent_turn_delivery(
-            {
-                "schema": AGENT_TURN_DELIVERY_SCHEMA,
-                "delivery_id": f"atd-{attempt_id}",
-                "delivery_key": f"{action['action_id']}:{attempt_id}",
-                "adapter_id": ADAPTER_ID,
-                "adapter_generation": self.settings.adapter_generation,
-                "target_kind": "codex-ide-task",
-                "target_id": target["task_id"],
-                "workspace": workspace.relative_to(self.root).as_posix(),
-                "prompt": prompt,
-                "prompt_digest": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
-                "action": action,
-                "context": context,
-                "lease": dict(claimed["lease"]),
-                "agent": {
-                    "agent_id": agent["agent_id"],
-                    "driver": agent["driver"],
-                },
-                "created_at": _utc_now(),
-            }
-        )
-        self._write_json(
-            self.workspace.run_root(str(action["action_id"])) / "delivery.json",
-            delivery,
-        )
-        return delivery
-
-    def _existing_delivery(
-        self,
-        claimed: Mapping[str, Any],
-    ) -> dict[str, Any] | None:
-        action = dict(claimed["action"])
-        action_id = str(action["action_id"])
-        attempt_id = str(claimed["attempt_id"])
-        path = self.workspace.run_root(action_id) / "delivery.json"
-        if not path.is_file():
-            return None
-        delivery = self._read_delivery(action_id)
-        if str(delivery["delivery_id"]) != f"atd-{attempt_id}":
-            return None
-        if str(delivery["delivery_key"]) != f"{action_id}:{attempt_id}":
-            raise CodexIdeAdapterError("Agent delivery identity is inconsistent")
-        if dict(delivery["action"]) != action:
-            raise CodexIdeAdapterError("Agent delivery action changed after publication")
-        if dict(delivery["context"]) != dict(claimed["context"]):
-            raise CodexIdeAdapterError("Agent delivery context changed after publication")
-        if str(delivery["agent"]["agent_id"]) != str(
-            claimed["agent"]["agent_id"]
-        ):
-            raise CodexIdeAdapterError("Agent delivery executor identity changed")
-        target = self._target_for_agent(str(claimed["agent"]["agent_id"]))
-        if str(delivery["target_id"]) != target["task_id"]:
-            raise CodexIdeAdapterError("Agent delivery target changed after publication")
-        lease = dict(delivery["lease"])
-        current_lease = dict(claimed["lease"])
-        for field in (
-            "lease_id",
-            "lease_token",
-            "action_id",
-            "iteration_id",
-            "operator_id",
-            "role",
-            "agent_id",
-        ):
-            if str(lease.get(field) or "") != str(current_lease.get(field) or ""):
-                raise CodexIdeAdapterError(
-                    f"Agent delivery lease identity changed: {field}"
-                )
-        expected_workspace = (
-            self.workspace.run_root(action_id) / "workspace"
-        ).relative_to(self.root).as_posix()
-        if str(delivery["workspace"]) != expected_workspace:
-            raise CodexIdeAdapterError("Agent delivery workspace changed after publication")
-        return delivery
-
-    def _prompt(
-        self,
-        action: Mapping[str, Any],
-        context: Mapping[str, Any],
-        workspace: Path,
-        attempt_id: str,
-    ) -> str:
-        runbook = (self.root / str(action["runbook_path"])).resolve()
-        if self.root not in runbook.parents or not runbook.is_file():
-            raise CodexIdeAdapterError("Agent action runbook is missing or unbounded")
-        if hashlib.sha256(runbook.read_bytes()).hexdigest() != action["runbook_digest"]:
-            raise CodexIdeAdapterError("Agent action runbook digest mismatch")
-        marker = f"ASCENDOP_AGENT_ACTION={action['action_id']} ATTEMPT={attempt_id}"
-        output_authoring = render_agent_output_authoring_contract(
-            action.get("output_contracts", [])
-        )
-        return (
-            marker
-            + "\n\n"
-            + runbook.read_text(encoding="utf-8")
-            + "\n\nFLOW V4 ACTION (immutable):\n"
-            + json.dumps(action, ensure_ascii=True, indent=2, sort_keys=True)
-            + "\n\nHANDOFF CONTEXT (immutable):\n"
-            + json.dumps(context, ensure_ascii=True, indent=2, sort_keys=True)
-            + "\n\n"
-            + output_authoring
-            + "\n\nWork only inside this isolated workspace: "
-            + str(workspace)
-            + "\nImmutable workflow and reference artifacts, when supplied, are indexed "
-            "by .ascendop-evidence/MANIFEST.json. Inspect or skip them according "
-            "to the registered skills and current evidence."
-            + "\nDo not mutate the canonical workspace, queue/result archives, control DB, "
-            "endpoint state, or official website. Finish with a concise result summary; "
-            "the app-side adapter records the typed receipt. Any daemon-authorized "
-            "non-source output must be written only to the exact slot declared in "
-            ".ascendop-output/CONTRACT.json.\n"
-        )
-
-    def _target_for_agent(self, agent_id: str) -> dict[str, str]:
-        for target in self.targets():
-            if target["agent_id"] == agent_id:
-                return target
-        raise CodexIdeAdapterError(f"Codex IDE target is not configured: {agent_id}")
-
-    def _managed_agent_ids_for_consumer(self, consumer_id: str) -> set[str]:
-        targets = self.targets()
-        if not targets:
-            return set()
-        if len(targets) == 1:
-            return {targets[0]["agent_id"]}
-        base = self.settings.manager_runner_id
-        if consumer_id == base:
-            index = 0
-        elif consumer_id.startswith(base + "-"):
-            suffix = consumer_id[len(base) + 1 :]
-            if not suffix.isdigit():
-                raise CodexIdeAdapterError(
-                    "Codex IDE consumer does not identify a configured target slot"
-                )
-            index = int(suffix)
-        else:
-            raise CodexIdeAdapterError(
-                "Codex IDE consumer does not identify a configured target slot"
-            )
-        if index >= len(targets):
-            raise CodexIdeAdapterError(
-                "Codex IDE consumer target slot is outside delivery capacity"
-            )
-        return {targets[index]["agent_id"]}
-
-    def _service_heartbeat(self, consumer_id: str) -> None:
-        self.database.record_runtime_service_heartbeat(
-            service_id="ascendop-codex-ide-task-adapter",
-            role="agent-execution",
-            code_generation=self.code_generation,
-            capabilities=[
-                "agent-pool-routing",
-                "agent-work-lease",
-                "isolated-workspace",
-                "session-resume",
-                "app-side-task-delivery",
-            ],
-            state="ready",
-            boot_id=self.boot_id,
-            lease_seconds=self.settings.lease_seconds,
-            details={
-                "adapter_id": ADAPTER_ID,
-                "consumer_id": consumer_id,
-                "runner_id": self.settings.manager_runner_id,
-                "runner_generation": self.settings.adapter_generation,
-                "execution_contract_digest": self.execution_contract_digest,
-            },
-        )
-
-    def _write_adapter_state(
-        self,
-        claimed: Mapping[str, Any],
-        delivery: Mapping[str, Any],
-        *,
-        consumer_id: str,
-        phase: str,
-    ) -> None:
-        action = claimed["action"]
-        lease = claimed["lease"]
-        state = {
-            "schema": "ascendop.codex-ide-adapter-state.v1",
-            "action_id": str(action["action_id"]),
-            "attempt_id": str(claimed["attempt_id"]),
-            "agent_id": str(claimed["agent"]["agent_id"]),
-            "lease_id": str(lease["lease_id"]),
-            "lease_token": str(lease["lease_token"]),
-            "target_id": str(delivery["target_id"]),
-            "consumer_id": consumer_id,
-            "phase": phase,
-            "turn_id": str(claimed.get("session_id") or ""),
-            "claimed_at": str(lease["acquired_at"]),
-            "updated_at": _utc_now(),
-        }
-        self._write_state(str(action["action_id"]), state)
-
-    def _active_state(self, consumer_id: str) -> dict[str, Any] | None:
-        candidates: list[dict[str, Any]] = []
-        if not self.workspace.runs_root.is_dir():
-            return None
-        for path in self.workspace.runs_root.glob("*/adapter-state.json"):
-            try:
-                state = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-            if not isinstance(state, dict) or state.get("consumer_id") != consumer_id:
-                continue
-            action = self.database.agent_action(str(state.get("action_id") or ""))
-            if (
-                action is not None
-                and action["state"] in {"claimed", "running"}
-                and str(state.get("attempt_id") or "")
-                == str(action.get("current_attempt_id") or "")
-                and str(state.get("lease_id") or "")
-                == str(action.get("current_lease_id") or "")
-            ):
-                candidates.append(state)
-        if len(candidates) > 1:
-            raise CodexIdeAdapterError("consumer owns multiple active Agent deliveries")
-        return candidates[0] if candidates else None
-
-    def _require_state(self, action_id: str, consumer_id: str) -> dict[str, Any]:
-        self._require_consumer(consumer_id)
-        path = self.workspace.run_root(action_id) / "adapter-state.json"
-        try:
-            value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise CodexIdeAdapterError(
-                f"Codex IDE adapter state is unavailable: {action_id}"
-            ) from exc
-        if not isinstance(value, dict) or value.get("consumer_id") != consumer_id:
-            raise CodexIdeAdapterError("Codex IDE adapter consumer identity mismatch")
-        action = self.database.agent_action(action_id)
-        if action is None:
-            raise CodexIdeAdapterError(f"Agent action does not exist: {action_id}")
-        if (
-            str(value.get("attempt_id") or "")
-            != str(action.get("current_attempt_id") or "")
-            or str(value.get("lease_id") or "")
-            != str(action.get("current_lease_id") or "")
-        ):
-            raise CodexIdeAdapterError(
-                "Codex IDE adapter attempt or lease identity is stale"
-            )
-        return value
-
-    def _read_delivery(self, action_id: str) -> dict[str, Any]:
-        path = self.workspace.run_root(action_id) / "delivery.json"
-        try:
-            value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise CodexIdeAdapterError(
-                f"Agent delivery is unavailable: {action_id}"
-            ) from exc
-        if not isinstance(value, dict):
-            raise CodexIdeAdapterError("Agent delivery must be a JSON object")
-        return validate_agent_turn_delivery(value)
-
-    def _write_state(self, action_id: str, state: Mapping[str, Any]) -> None:
-        path = self.workspace.run_root(action_id) / "adapter-state.json"
-        self._write_json(path, state)
-        try:
-            os.chmod(path, 0o600)
-        except OSError:
-            pass
-
-    @staticmethod
-    def _write_json(path: Path, value: Mapping[str, Any]) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        payload = json.dumps(value, ensure_ascii=True, indent=2, sort_keys=True) + "\n"
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=path.parent, delete=False
-        ) as handle:
-            handle.write(payload)
-            temporary = Path(handle.name)
-        os.replace(temporary, path)
-
-    @staticmethod
-    def _require_consumer(consumer_id: str) -> None:
-        if not consumer_id or any(ch not in TOKEN_CHARS for ch in consumer_id):
-            raise CodexIdeAdapterError("consumer_id must be a safe token")
-
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _promotion_action_id(seal_path: Path) -> str:
-    try:
-        value = json.loads(seal_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise CodexIdeAdapterError(f"invalid Agent promotion seal: {seal_path}") from exc
-    action_id = str(value.get("action_id") or "") if isinstance(value, dict) else ""
-    if not action_id or any(char not in TOKEN_CHARS for char in action_id):
-        raise CodexIdeAdapterError("Agent promotion seal has an invalid action_id")
-    return action_id

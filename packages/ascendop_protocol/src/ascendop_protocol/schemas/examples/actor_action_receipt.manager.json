@@ -1,0 +1,12 @@
+{
+  "schema": "ascendop.actor-action-receipt.v1",
+  "action_id": "manager-action-1",
+  "action_kind": "manager.flow-pause",
+  "effective_role": "manager",
+  "role_binding_id": "binding-manager-1",
+  "lease_id": "manager-lease-1",
+  "status": "completed",
+  "result": {"flow_id": "ascendop", "state": "paused"},
+  "failure_class": null,
+  "completed_at": "2026-08-17T00:01:00Z"
+}

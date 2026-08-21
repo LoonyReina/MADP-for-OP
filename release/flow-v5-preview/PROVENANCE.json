@@ -1,0 +1,45 @@
+{
+  "schema": "madp.publication-provenance.v1",
+  "milestone": "flow-v5-preliminary-public-core",
+  "publication_date": "2026-08-21",
+  "public_tag": "preview-2026-08-21-flow-v5-core",
+  "public_core_version": "5.4.3",
+  "source_snapshot": {
+    "relationship": "Allowlisted extraction from the private AscendOP integration workspace before standalone test-gateway implementation.",
+    "flow_v5_status": "preliminary",
+    "standalone_test_gateway_present": false
+  },
+  "wheel_sha256": {
+    "ascendop_protocol-5.4.3-py3-none-any.whl": "35c4575c6e6ddabffc5d76ba63c2bbda84ca3ea43a3edf2ba4237bbf2ffe4dca",
+    "ascendop_control-5.4.3-py3-none-any.whl": "81e7e970179d31467a2ebc95a14a9bf6604ca7a0dc03064dedff0116641f09fb",
+    "ascendop_agent_runner-5.4.3-py3-none-any.whl": "c1f183f1cf69b1a04b9d1272a396d6f38547009f41fdcc6ef3ff44694e681cd2",
+    "ascendop_tester_daemon-5.4.3-py3-none-any.whl": "a3bd08592f4b83d9ce8b97d4376c08dcd057ab420b7b9b95cf18c240fd2b541c"
+  },
+  "allowlisted_component_digests": {
+    "protocol-source": "062183520d5d76401294cf8a84b72fbd29b073528a16f89a51b093091901db63",
+    "protocol-tests": "3c9b5ef0404d99ba080f4ad78df1a2bbe2c489eabb76f7cbc5965ad9feb4a5aa",
+    "control-source": "f1577b43dec17f7b95dfd24b8b153527eda5e701852aa898950e62f4634755f6",
+    "control-tests": "5298a80591b65625f1b8204d8134dd4d6a343931d43042b00c292fb8e3ff06d9",
+    "agent-runner-source": "5a7334c14e5271160fe52c7b3aeb2648380828b1f2f85f98750ef49912dda262",
+    "agent-runner-tests": "9f89488133d6c6d3f3a8f70d78f864c48e63853944734f53c391d2b43f3c13c3",
+    "daemon-automation": "de06bdcfddf9510852cb1243d7ab3208d19811c2f4c6761e99108aec11fa81f9",
+    "daemon-control-plane": "e3e8745af99342c7a3c05024390c2c0b420b377a12c98967a9a57b668275fc07",
+    "daemon-core": "b87d1433acbc2b566a93775f6942d93b2abeccff6683a11cbcb762b22362873f",
+    "daemon-exchange": "f3a4212132cb8690d71ea7c4a208e3f78e41998a203a58908b0688423168a633",
+    "daemon-observability": "8d2d3249315d46e3b83eb52530ad94f1c99a76319c395f920a44057824554a03",
+    "daemon-registry": "ef92389d6af6e6e12b1b312ed194dad733621186dfd0a6cc7761254570c561b6",
+    "daemon-runtime": "0f2e8aebd3bfd42bc164a30fd8ad38a3c15f4d8921bde52c83f2ae389a319c27",
+    "daemon-storage": "4207f62ea738bc514e3803e0935ff3c8780ebabd475740c164e2e917354b25cf",
+    "daemon-workflow": "5bcc604064f13142cd16a33f1b56320a7b3efc35a12fe7cae2bad37b41f1c21b"
+  },
+  "excluded_components": [
+    "daemon resident bootstrap and historical compatibility bridge",
+    "GitPartner and endpoint Engine implementation",
+    "endpoint, node, and service configuration",
+    "operator source, test cases, profiles, payloads, and results",
+    "official evaluation implementation and policy",
+    "credentials, runtime state, queues, databases, and logs",
+    "deployment bootstrap and machine-specific paths",
+    "standalone GP/Engine test gateway"
+  ]
+}

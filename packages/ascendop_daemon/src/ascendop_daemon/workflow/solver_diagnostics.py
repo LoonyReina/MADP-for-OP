@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import shutil
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -13,6 +11,19 @@ from ascendop_protocol.workflow import validate_solver_diagnostic_request
 
 from ascendop_daemon.core.atomic_io import write_json_atomic
 from ascendop_daemon.core.models import DaemonConfig, operator_season
+from ascendop_daemon.workflow.correctness_retry_state import (
+    active_engine_code_generation,
+    authorize_correctness_retry,
+    materialized_engine_code_generation,
+    reconcile_reused_correctness_attempt_identity,
+    state_execution_engine_generation,
+)
+from ascendop_daemon.workflow.diagnostic_collection_recovery import (
+    reconcile_failed_collection_from_evidence,
+)
+from ascendop_daemon.workflow.diagnostic_artifacts import (
+    diagnostic_collection_complete as _diagnostic_collection_complete,
+)
 from ascendop_daemon.workflow.operator_job_builder import tree_digest
 from ascendop_daemon.workflow.profiler_request_state import (
     ProfilerRequestStateError,
@@ -20,93 +31,23 @@ from ascendop_daemon.workflow.profiler_request_state import (
     profiler_evidence_status,
     retry_typed_profiler_request,
 )
+from ascendop_daemon.workflow.solver_diagnostic_paths import (
+    INDEX_FILE,
+    REQUEST_FILE,
+    SolverDiagnosticError,
+    archived_submit_snapshot,
+    canonical_digest,
+    generation_digest,
+    index_path,
+    request_path,
+    revision_path,
+    state_path,
+    utc_now_iso,
+)
 
 
-REQUEST_FILE = "SOLVER_DIAGNOSTIC_REQUEST.json"
-INDEX_FILE = "SOLVER_DIAGNOSTIC_INDEX.json"
 STATE_PROTOCOL = "ascendop.solver-diagnostic-state.v1"
 INDEX_PROTOCOL = "ascendop.solver-diagnostic-index.v1"
-
-
-class SolverDiagnosticError(RuntimeError):
-    pass
-
-
-def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
-
-
-def canonical_digest(value: Mapping[str, Any]) -> str:
-    encoded = json.dumps(
-        value,
-        ensure_ascii=True,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
-
-
-def generation_digest(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
-
-
-def case_directory(root: Path, operator: str, case_version: str) -> Path:
-    return root / "TestUtils" / "casegen" / operator / "case" / case_version
-
-
-def request_path(root: Path, operator: str, case_version: str) -> Path:
-    return case_directory(root, operator, case_version) / REQUEST_FILE
-
-
-def index_path(root: Path, operator: str, case_version: str) -> Path:
-    return case_directory(root, operator, case_version) / INDEX_FILE
-
-
-def state_path(
-    root: Path,
-    operator: str,
-    case_version: str,
-    blocker_generation: str,
-) -> Path:
-    return (
-        root
-        / "TestUtils"
-        / "tester_daemon"
-        / "solver_diagnostic_requests"
-        / operator
-        / case_version
-        / generation_digest(blocker_generation)
-        / "request.json"
-    )
-
-
-def revision_path(
-    root: Path,
-    operator: str,
-    case_version: str,
-    blocker_generation: str,
-    request_digest: str,
-) -> Path:
-    return (
-        state_path(root, operator, case_version, blocker_generation).parent
-        / "revisions"
-        / f"r-{request_digest[:16]}.json"
-    )
-
-
-def archived_submit_snapshot(root: Path, operator: str, test_version: str) -> Path:
-    snapshot = (
-        root
-        / "operators_testresult"
-        / operator
-        / test_version
-        / "submit_snapshot"
-    )
-    if not snapshot.is_dir():
-        raise SolverDiagnosticError(
-            f"immutable submit snapshot is missing: {operator}/{test_version}"
-        )
-    return snapshot
 
 
 def load_request(
@@ -181,13 +122,20 @@ def observe_request(
             "error": str(exc),
         }
     digest = canonical_digest(request)
-    requested_artifacts = list(
-        request.get("scope", {}).get("requested_artifacts", [])
-    )
-    state = read_object(
-        state_path(root, operator, case_version, blocker_generation)
-    )
+    requested_artifacts = list(request.get("scope", {}).get("requested_artifacts", []))
+    registered_path = state_path(root, operator, case_version, blocker_generation)
+    state = read_object(registered_path)
     if state:
+        reconciled = reconcile_failed_collection_from_evidence(root, state)
+        if reconciled != state:
+            state = reconciled
+            write_json_atomic(
+                registered_path,
+                state,
+                ensure_ascii=True,
+                sort_keys=True,
+            )
+            sync_index(root, state)
         if str(state.get("request_digest") or "") != digest:
             if _can_supersede_failed_correctness(state, request):
                 return {
@@ -215,11 +163,36 @@ def observe_request(
             )
             if profiler_state:
                 effective_state = profiler_state
+        operation_kind = str(request["operation_kind"])
+        execution_generation = state_execution_engine_generation(
+            root,
+            effective_state,
+        )
+        retry_engine_generation = str(
+            effective_state.get("retry_engine_generation") or ""
+        )
+        active_engine_generation = active_engine_code_generation(root)
+        missing_requested_artifacts = [
+            str(value)
+            for value in effective_state.get("missing_requested_artifacts", [])
+            if str(value)
+        ]
+        retry_available = (
+            operation_kind == "diagnostic-correctness-replay"
+            and str(effective_state.get("status") or "") == "failed"
+            and str(effective_state.get("target_terminal_state") or "")
+            == "terminal-infrastructure-failure"
+            and bool(missing_requested_artifacts)
+            and bool(execution_generation)
+            and bool(active_engine_generation)
+            and execution_generation != active_engine_generation
+            and retry_engine_generation != active_engine_generation
+        )
         return {
             "status": str(effective_state.get("status") or "registered"),
             "request_path": relative_path(root, path),
             "request_digest": digest,
-            "operation_kind": str(request["operation_kind"]),
+            "operation_kind": operation_kind,
             "requested_artifacts": requested_artifacts,
             "state_path": relative_path(
                 root,
@@ -228,6 +201,15 @@ def observe_request(
             "evidence_path": str(effective_state.get("evidence_path") or ""),
             "request_id": str(effective_state.get("request_id") or ""),
             "attempt_id": str(effective_state.get("attempt_id") or ""),
+            "request_attempt": int(effective_state.get("request_attempt", 1) or 1),
+            "target_terminal_state": str(
+                effective_state.get("target_terminal_state") or ""
+            ),
+            "missing_requested_artifacts": missing_requested_artifacts,
+            "execution_engine_generation": execution_generation,
+            "retry_engine_generation": retry_engine_generation,
+            "active_engine_generation": active_engine_generation,
+            "retry_available": retry_available,
             "error": str(effective_state.get("last_error") or ""),
         }
     return {
@@ -291,9 +273,7 @@ def register_request(
         "request_snapshot": dict(request),
         "revision": revision,
         "supersedes_request_digest": supersedes_request_digest,
-        "request_path": relative_path(
-            root, request_path(root, operator, case_version)
-        ),
+        "request_path": relative_path(root, request_path(root, operator, case_version)),
         "request_state_path": relative_path(root, path),
         "submit_snapshot": relative_path(root, snapshot),
         "target_source_sha256": str(request["target"]["source_sha256"]),
@@ -303,9 +283,14 @@ def register_request(
         ),
         "retry_policy": dict(request["retry_policy"]),
         "status": "ready",
+        "request_attempt": 1,
         "request_id": "",
         "attempt_id": "",
         "evidence_path": "",
+        "attempt_history": [],
+        "execution_engine_generation": "",
+        "retry_engine_generation": "",
+        "retry_from_engine_generation": "",
         "last_error": "",
         "created_at": now,
         "updated_at": now,
@@ -333,10 +318,8 @@ def _can_supersede_failed_correctness(
 ) -> bool:
     return (
         str(state.get("status") or "") == "failed"
-        and str(state.get("operation_kind") or "")
-        == "diagnostic-correctness-replay"
-        and str(request.get("operation_kind") or "")
-        == "diagnostic-correctness-replay"
+        and str(state.get("operation_kind") or "") == "diagnostic-correctness-replay"
+        and str(request.get("operation_kind") or "") == "diagnostic-correctness-replay"
     )
 
 
@@ -414,17 +397,81 @@ def retry_profiler_request(
         raise SolverDiagnosticError(str(exc)) from exc
 
 
+def retry_correctness_request(
+    root: Path,
+    *,
+    operator: str,
+    case_version: str,
+    result_version: str,
+    blocker_generation: str,
+    expected_request_attempt: int,
+    expected_failed_engine_generation: str,
+) -> dict[str, Any]:
+    """Authorize one same-intent replay after the Engine capability changed."""
+
+    request = load_request(
+        root,
+        operator=operator,
+        case_version=case_version,
+        result_version=result_version,
+        blocker_generation=blocker_generation,
+    )
+    if str(request.get("operation_kind") or "") != "diagnostic-correctness-replay":
+        raise SolverDiagnosticError(
+            "correctness retry requires a diagnostic-correctness-replay operation"
+        )
+    request_digest = canonical_digest(request)
+    path = state_path(root, operator, case_version, blocker_generation)
+    state = read_object(path)
+    if not state:
+        raise SolverDiagnosticError(
+            f"Solver correctness diagnostic state is missing: {path}"
+        )
+    if (
+        str(state.get("protocol_version") or "") != STATE_PROTOCOL
+        or str(state.get("operator") or "") != operator
+        or str(state.get("case_version") or "") != case_version
+        or str(state.get("result_version") or "") != result_version
+        or str(state.get("blocker_generation") or "") != blocker_generation
+        or str(state.get("request_digest") or "") != request_digest
+    ):
+        raise SolverDiagnosticError(f"correctness retry identity collision: {path}")
+
+    state = authorize_correctness_retry(
+        root,
+        state,
+        expected_request_attempt=expected_request_attempt,
+        expected_failed_engine_generation=expected_failed_engine_generation,
+    )
+    write_json_atomic(path, state, ensure_ascii=True, sort_keys=True)
+    sync_index(root, state)
+    return state
+
+
 def discover_ready_correctness_request(
     root: Path,
     config: DaemonConfig,
 ) -> dict[str, Any] | None:
     base = root / "TestUtils" / "tester_daemon" / "solver_diagnostic_requests"
+    states: list[tuple[Path, dict[str, Any]]] = []
     for path in sorted(base.glob("*/*/*/request.json")):
         state = read_object(path)
+        reconciled = reconcile_failed_collection_from_evidence(root, state)
+        if reconciled != state:
+            state = reconciled
+            write_json_atomic(path, state, ensure_ascii=True, sort_keys=True)
+            sync_index(root, state)
+        reconciled = reconcile_reused_correctness_attempt_identity(state)
+        if reconciled != state:
+            state = reconciled
+            write_json_atomic(path, state, ensure_ascii=True, sort_keys=True)
+            sync_index(root, state)
+        states.append((path, state))
+
+    for path, state in states:
         if (
             str(state.get("protocol_version") or "") != STATE_PROTOCOL
-            or str(state.get("operation_kind") or "")
-            != "diagnostic-correctness-replay"
+            or str(state.get("operation_kind") or "") != "diagnostic-correctness-replay"
             or str(state.get("status") or "") != "ready"
         ):
             continue
@@ -435,8 +482,7 @@ def discover_ready_correctness_request(
         snapshot = root / str(state["submit_snapshot"])
         hardware = str(config.policy.get("test_engine_hardware") or "910B4")
         remote_root = str(
-            config.policy.get("test_engine_remote_root")
-            or config.remote_root
+            config.policy.get("test_engine_remote_root") or config.remote_root
         )
         command = (
             f"python scripts\\next_workflow.py gitpartner-run-submit "
@@ -445,6 +491,7 @@ def discover_ready_correctness_request(
             f"--hardware {hardware} --case-version {state['case_version']} "
             f"--remote-root {remote_root}"
         )
+        request_attempt = int(state.get("request_attempt", 1) or 1)
         return {
             "root": root.resolve(),
             "state_path": path,
@@ -453,9 +500,9 @@ def discover_ready_correctness_request(
                 "op": operator,
                 "test_version": result_version,
                 "command": command,
-                "attempt_index": 1,
+                "attempt_index": request_attempt,
                 "job_id_suffix": (
-                    f"diag-{state['generation_digest']}-a01"
+                    f"diag-{state['generation_digest']}-a{request_attempt:02d}"
                 ),
                 "submit_root_override": str(snapshot),
             },
@@ -552,8 +599,9 @@ def record_result(
         / evidence_key[:32]
     )
     materialized_digest = tree_digest(materialized_root)
-    artifacts_complete, missing_requested_artifacts = (
-        _diagnostic_collection_complete(state, materialized_root)
+    execution_engine_generation = materialized_engine_code_generation(materialized_root)
+    artifacts_complete, missing_requested_artifacts = _diagnostic_collection_complete(
+        state, materialized_root
     )
     target_terminal = terminal_state in {
         "terminal-success",
@@ -587,13 +635,12 @@ def record_result(
             )
         summary = {
             **existing_summary,
-            "collection_status": (
-                "complete" if collection_complete else "failed"
-            ),
+            "collection_status": ("complete" if collection_complete else "failed"),
             "missing_requested_artifacts": missing_requested_artifacts,
             "requested_artifacts": list(
                 state.get("scope", {}).get("requested_artifacts", [])
             ),
+            "execution_engine_generation": execution_engine_generation,
         }
         if summary != existing_summary:
             write_json_atomic(
@@ -614,9 +661,7 @@ def record_result(
             "request_id": request_id,
             "attempt_id": attempt_id,
             "terminal_state": terminal_state,
-            "collection_status": (
-                "complete" if collection_complete else "failed"
-            ),
+            "collection_status": ("complete" if collection_complete else "failed"),
             "missing_requested_artifacts": missing_requested_artifacts,
             "requested_artifacts": list(
                 state.get("scope", {}).get("requested_artifacts", [])
@@ -625,6 +670,7 @@ def record_result(
             "evidence_root": relative_path(root, evidence),
             "materialized_bundle": relative_path(root, bundle),
             "materialized_bundle_sha256": materialized_digest,
+            "execution_engine_generation": execution_engine_generation,
             "recorded_at": utc_now_iso(),
         }
         write_json_atomic(
@@ -635,19 +681,12 @@ def record_result(
         )
     state.update(
         {
-            "status": (
-                "complete"
-                if collection_complete
-                else "failed"
-            ),
-            "collection_status": (
-                "complete" if collection_complete else "failed"
-            ),
+            "status": ("complete" if collection_complete else "failed"),
+            "collection_status": ("complete" if collection_complete else "failed"),
             "missing_requested_artifacts": missing_requested_artifacts,
             "target_terminal_state": terminal_state,
-            "evidence_path": relative_path(
-                root, evidence / "DIAGNOSTIC_EVIDENCE.json"
-            ),
+            "execution_engine_generation": execution_engine_generation,
+            "evidence_path": relative_path(root, evidence / "DIAGNOSTIC_EVIDENCE.json"),
             "last_error": (
                 ""
                 if collection_complete
@@ -663,106 +702,6 @@ def record_result(
     write_json_atomic(state_file, state, ensure_ascii=True, sort_keys=True)
     sync_index(root, state)
     return summary
-
-
-def _diagnostic_collection_complete(
-    state: Mapping[str, Any], materialized_root: Path
-) -> tuple[bool, list[str]]:
-    """Judge the diagnostic collection separately from the target verdict."""
-
-    artifact_roots = (materialized_root, materialized_root / "result_bundle")
-    requested = [
-        str(value)
-        for value in state.get("scope", {}).get("requested_artifacts", [])
-        if str(value)
-    ]
-    missing = [
-        artifact
-        for artifact in requested
-        if not any(
-            _requested_artifact_present(root, artifact)
-            for root in artifact_roots
-        )
-    ]
-    return not missing, missing
-
-
-def _requested_artifact_present(root: Path, artifact: str) -> bool:
-    paths = {
-        "engine-identity": ("result/ENGINE_IDENTITY.json",),
-        "runtime-readiness": ("result/RUNTIME_READINESS.json",),
-        "runtime-compatibility": ("result/RUNTIME_COMPATIBILITY.json",),
-        "operator-install-precheck": ("result/OPERATOR_INSTALL_PRECHECK.txt",),
-        "phase-timeline": ("result/PHASE_TIMELINE.jsonl",),
-        "correctness-batch": ("result/CORRECTNESS_BATCH.json",),
-        "case-logs": ("result/case_logs", "logs"),
-    }
-    if artifact in paths:
-        return any(_path_has_evidence(root / path) for path in paths[artifact])
-    if artifact == "first-failure-traceback":
-        return (
-            _path_has_evidence(root / "result/FAILURE_CASE_LOG.txt")
-            or _runtime_trace_has_stack(root / "result/RUNTIME_BOUNDARY_TRACE.json")
-        )
-    if artifact == "runtime-boundary-trace":
-        return (
-            _runtime_trace_has_boundary(root / "result/RUNTIME_BOUNDARY_TRACE.json")
-            and _path_has_evidence(root / "result/runtime_boundary")
-        )
-    if artifact == "native-workspace-query-attribution":
-        return _native_workspace_attribution_has_attempt(
-            root / "result/NATIVE_WORKSPACE_QUERY_ATTRIBUTION.json"
-        )
-    if artifact == "kernel-fault-attribution":
-        return _kernel_fault_attribution_is_captured(
-            root / "result/KERNEL_FAULT_ATTRIBUTION.json"
-        ) and _path_has_evidence(root / "result/kernel_fault")
-    return False
-
-
-def _path_has_evidence(path: Path) -> bool:
-    if path.is_file():
-        return path.stat().st_size > 0
-    if path.is_dir():
-        return any(item.is_file() and item.stat().st_size > 0 for item in path.rglob("*"))
-    return False
-
-
-def _runtime_trace_has_stack(path: Path) -> bool:
-    trace = read_object(path)
-    return any(
-        str(sample.get("stack") or "").strip()
-        for execution in trace.get("executions", [])
-        if isinstance(execution, Mapping)
-        for sample in execution.get("stack_samples", [])
-        if isinstance(sample, Mapping)
-    )
-
-
-def _runtime_trace_has_boundary(path: Path) -> bool:
-    trace = read_object(path)
-    return any(
-        execution.get("boundaries") or execution.get("stack_samples")
-        for execution in trace.get("executions", [])
-        if isinstance(execution, Mapping)
-    )
-
-
-def _native_workspace_attribution_has_attempt(path: Path) -> bool:
-    attribution = read_object(path)
-    return any(
-        execution.get("attempts")
-        for execution in attribution.get("executions", [])
-        if isinstance(execution, Mapping)
-    )
-
-
-def _kernel_fault_attribution_is_captured(path: Path) -> bool:
-    attribution = read_object(path)
-    return (
-        str(attribution.get("status") or "") in {"captured", "no-fault"}
-        and str(attribution.get("tool", {}).get("status") or "") == "available"
-    )
 
 
 def _materialize_evidence_blob(
@@ -809,13 +748,19 @@ def sync_index(root: Path, state: Mapping[str, Any]) -> None:
         "operation_kind": str(state["operation_kind"]),
         "request_digest": str(state["request_digest"]),
         "revision": int(state.get("revision") or 1),
-        "supersedes_request_digest": str(
-            state.get("supersedes_request_digest") or ""
-        ),
+        "supersedes_request_digest": str(state.get("supersedes_request_digest") or ""),
         "status": str(state["status"]),
         "request_id": str(state.get("request_id") or ""),
         "attempt_id": str(state.get("attempt_id") or ""),
+        "request_attempt": int(state.get("request_attempt", 1) or 1),
         "evidence_path": str(state.get("evidence_path") or ""),
+        "execution_engine_generation": str(
+            state.get("execution_engine_generation") or ""
+        ),
+        "retry_engine_generation": str(state.get("retry_engine_generation") or ""),
+        "retry_from_engine_generation": str(
+            state.get("retry_from_engine_generation") or ""
+        ),
         "last_error": str(state.get("last_error") or ""),
         "updated_at": str(state["updated_at"]),
     }
@@ -846,4 +791,5 @@ __all__ = [
     "observe_request",
     "record_result",
     "register_request",
+    "retry_correctness_request",
 ]

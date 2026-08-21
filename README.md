@@ -12,6 +12,12 @@ control plane, and focused tests. GP/Engine architecture and interfaces are
 documented publicly; machine bindings, endpoint implementation, operator assets,
 and official evaluation stay in the private AscendOP deployment.
 
+The current `main` branch is a preliminary Flow V5 core checkpoint. It adds
+multi-role action contracts, adapter-neutral Agent completion, registered
+evidence operations, attempt-scoped delivery, and workflow projections. It is
+published before the planned standalone GP/Engine test gateway and is not a
+claim that the complete Flow V5 acceptance suite has passed.
+
 ## Core architecture
 
 ```text
@@ -108,10 +114,13 @@ tests and publication scan before committing.
 - `archive-2026-06-02`: Scheduler V2 source snapshot.
 - `archive-2026-08-07-flow-v3`: typed Flow V3 data-plane snapshot.
 - `archive-2026-08-16-flow-v4-core`: curated Flow V4 MADP core architecture.
+- `preview-2026-08-21-flow-v5-core`: preliminary Flow V5 protocol and control
+  checkpoint, before standalone test-gateway development.
 
 Historical tags preserve the evolution of the project. The Flow V4 core tag is
 the first milestone with the deliberately narrow public boundary described
-above.
+above. See [Flow V5 preview](docs/architecture/FLOW_V5_PREVIEW.md) for the
+current checkpoint and its explicit incomplete scope.
 
 ## License
 

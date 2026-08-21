@@ -8,6 +8,7 @@ RUNTIME_COMPATIBILITY_FLAGS = {
     "ge-fixed-output-dtype-fallback",
     "runtime-boundary-trace",
     "native-workspace-query-attribution",
+    "host-callback-attribution",
     "kernel-fault-attribution",
 }
 
@@ -31,6 +32,7 @@ def runtime_compatibility_fragments(values: tuple[str, ...]) -> list[str]:
     if {
         "runtime-boundary-trace",
         "native-workspace-query-attribution",
+        "host-callback-attribution",
     }.intersection(values):
         fragments.extend(
             [
@@ -40,6 +42,8 @@ def runtime_compatibility_fragments(values: tuple[str, ...]) -> list[str]:
         )
     if "native-workspace-query-attribution" in values:
         fragments.append("export ASCENDOP_NATIVE_WORKSPACE_QUERY_ATTRIBUTION=1")
+    if "host-callback-attribution" in values:
+        fragments.append("export ASCENDOP_HOST_CALLBACK_ATTRIBUTION=1")
     if "kernel-fault-attribution" in values:
         if not {
             "runtime-boundary-trace",

@@ -70,10 +70,26 @@ class CandidateProposalPublisher:
             or action.get("operator_id")
             or ""
         )
+        contract = next(
+            (
+                dict(candidate)
+                for candidate in action.get("output_contracts", [])
+                if str(candidate.get("output_kind") or "")
+                == "solver-candidate-proposal"
+            ),
+            None,
+        )
+        if contract is None:
+            raise CandidateProposalError(
+                "candidate Agent action has no candidate proposal contract"
+            )
+        contract_identity = dict(contract.get("identity") or {})
         expected = {
             "campaign": str(action.get("campaign") or ""),
             "operator": display_name,
             "candidate_version": str(action.get("candidate_version") or ""),
+            "case_version": str(contract_identity.get("case_version") or ""),
+            "base_version": str(contract_identity.get("base_version") or ""),
             "source_before_digest": str(
                 action.get("candidate_identity", {}).get("execution_source_digest") or ""
             ),

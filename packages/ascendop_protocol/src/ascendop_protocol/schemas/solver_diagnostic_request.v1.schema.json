@@ -158,6 +158,7 @@
                     "case-logs",
                     "runtime-boundary-trace",
                     "native-workspace-query-attribution",
+                    "host-callback-attribution",
                     "kernel-fault-attribution"
                   ]
                 }

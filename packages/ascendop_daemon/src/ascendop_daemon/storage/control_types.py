@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-SCHEMA_VERSION = 12
+from ascendop_control.storage import CONTROL_SCHEMA_VERSION
+
+
+SCHEMA_VERSION = CONTROL_SCHEMA_VERSION
 SYSTEM_EXPERIMENT_OPERATOR_ID = "__transport_experiment__"
 SYSTEM_EXPERIMENT_GENERATION = "transport-experiment-v1"
 BOOTSTRAP_CONTROL_PROBE_POLICY = "bootstrap-control-probe"

@@ -12,6 +12,8 @@ from .wire_v3 import *  # noqa: F401,F403
 _LAZY_EXPORT_MODULES = (
     "management",
     "agent",
+    "actor",
+    "evidence",
     "workflow",
     "reference_knowledge",
     "competition",

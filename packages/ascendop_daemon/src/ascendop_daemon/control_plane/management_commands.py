@@ -1,18 +1,21 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Mapping
 
 from ascendop_control.application import ControlCommandRejected
 from ascendop_control.storage.errors import ControlRepositoryError
 
 from ascendop_daemon.storage.control_types import ControlDatabaseError
+from ascendop_daemon.runtime.control import clear_stop_request, write_stop_request
 
 
 class DaemonControlCommandHandler:
     """Translate typed management commands into daemon-owned use cases."""
 
-    def __init__(self, database: Any) -> None:
+    def __init__(self, database: Any, *, root: Path | None = None) -> None:
         self.database = database
+        self.root = root.resolve() if root is not None else None
 
     def handle(self, command: Mapping[str, Any]) -> Mapping[str, Any]:
         kind = str(command["command_kind"])
@@ -42,9 +45,84 @@ class DaemonControlCommandHandler:
                     actor_id=str(command["actor_id"]),
                     reason=_text(parameters, "reason"),
                 )
+            if kind in {
+                "manager.flow-start",
+                "manager.flow-pause",
+                "manager.flow-resume",
+                "manager.flow-stop",
+            }:
+                return self._manage_flow(command, parameters)
+            if kind == "manager.request-user-decision":
+                return self._request_user_decision(command, parameters)
         except (ControlDatabaseError, ControlRepositoryError, ValueError) as exc:
             raise ControlCommandRejected(str(exc)) from exc
         raise ControlCommandRejected(f"unsupported command kind: {kind}")
+
+    def _manage_flow(
+        self,
+        command: Mapping[str, Any],
+        parameters: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        if self.root is None:
+            raise ControlCommandRejected("manager lifecycle root is not configured")
+        kind = str(command["command_kind"])
+        flow_id = _text(parameters, "flow_id")
+        reason = _text(parameters, "reason")
+        action_id = str(command["actor_action"]["action_id"])
+        if kind in {"manager.flow-start", "manager.flow-resume"}:
+            clear_stop_request(self.root)
+            state = "running"
+            allowed_commands = ["manager.flow-pause", "manager.flow-stop"]
+        else:
+            state = "paused" if kind == "manager.flow-pause" else "stopped"
+            write_stop_request(
+                self.root,
+                reason,
+                mode="pause" if state == "paused" else "stop",
+                action_id=action_id,
+            )
+            allowed_commands = (
+                ["manager.flow-resume", "manager.flow-stop"]
+                if state == "paused"
+                else ["manager.flow-start"]
+            )
+        projection = self.database.upsert_public_resource(
+            resource_type="workflow-lifecycle",
+            resource_id=flow_id,
+            revision=action_id,
+            attributes={
+                "flow_id": flow_id,
+                "state": state,
+                "reason": reason,
+                "last_action_id": action_id,
+                "last_actor_id": str(command["actor_id"]),
+                "allowed_commands": allowed_commands,
+            },
+        )
+        return {"flow_id": flow_id, "state": state, "projection": projection}
+
+    def _request_user_decision(
+        self,
+        command: Mapping[str, Any],
+        parameters: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        action_id = str(command["actor_action"]["action_id"])
+        decision_id = _text(parameters, "decision_id")
+        projection = self.database.upsert_public_resource(
+            resource_type="manager-notification",
+            resource_id=decision_id,
+            revision=action_id,
+            attributes={
+                "flow_id": _text(parameters, "flow_id"),
+                "decision_id": decision_id,
+                "prompt": _text(parameters, "prompt"),
+                "options": list(parameters["options"]),
+                "state": "awaiting-user",
+                "action_id": action_id,
+                "actor_id": str(command["actor_id"]),
+            },
+        )
+        return {"decision_id": decision_id, "state": "awaiting-user", "projection": projection}
 
     def _register_agent(self, parameters: Mapping[str, Any]) -> Mapping[str, Any]:
         registration = _mapping(parameters.get("registration"), "registration")

@@ -308,10 +308,24 @@ class RequestPreparationRepository:
             attempt_id = f"{request_id}-a{ordinal:03d}"
             preparation_id = f"prep-{request_id}-{uuid.uuid4().hex[:12]}"
             route_value = decision.to_dict()
+            observed_node = conn.execute(
+                "SELECT current_session_id, capability_generation "
+                "FROM observed_nodes WHERE node_id=?",
+                (selected.node_id,),
+            ).fetchone()
+            runtime_identity = (
+                {
+                    "node_session_id": str(observed_node[0]),
+                    "capability_generation": str(observed_node[1]),
+                }
+                if observed_node is not None
+                else {}
+            )
             payload = _routed_payload(
                 request=request,
                 selected=selected,
                 attempt_id=attempt_id,
+                runtime_identity=runtime_identity,
             )
             now = utc_now()
             conn.execute(
@@ -500,6 +514,37 @@ class RequestPreparationRepository:
                     "prepared endpoint is no longer current at publication"
                 )
 
+            node_session_id = str(payload.get("node_session_id") or "")
+            capability_generation = str(
+                payload.get("capability_generation") or ""
+            )
+            if bool(node_session_id) != bool(capability_generation):
+                raise ControlDatabaseError(
+                    "prepared runtime identity is incomplete"
+                )
+            if node_session_id:
+                observed_node = conn.execute(
+                    "SELECT endpoint_id, generation, current_session_id, "
+                    "capability_generation FROM observed_nodes WHERE node_id=?",
+                    (preparation["node_id"],),
+                ).fetchone()
+                expected_runtime = (
+                    str(preparation["endpoint_id"]),
+                    str(preparation["endpoint_generation"]),
+                    node_session_id,
+                    capability_generation,
+                )
+                actual_runtime = (
+                    tuple(str(value) for value in observed_node)
+                    if observed_node is not None
+                    else ()
+                )
+                if actual_runtime != expected_runtime:
+                    raise ControlDatabaseError(
+                        "prepared node session/capability generation changed "
+                        "before publication"
+                    )
+
             route = str(preparation["route_json"])
             attempt_id = str(preparation["proposed_attempt_id"])
             outbox_id = f"outbox-{attempt_id}"
@@ -642,7 +687,13 @@ class RequestPreparationRepository:
             ).fetchone()
         return decode_preparation_row(current)
 
-def _routed_payload(*, request: Any, selected: Any, attempt_id: str) -> dict[str, Any]:
+def _routed_payload(
+    *,
+    request: Any,
+    selected: Any,
+    attempt_id: str,
+    runtime_identity: dict[str, str] | None = None,
+) -> dict[str, Any]:
     manifest = json.loads(str(request["manifest_json"]))
     workflow = manifest.get("workflow", {})
     workflow_ingest = bool(
@@ -661,6 +712,7 @@ def _routed_payload(*, request: Any, selected: Any, attempt_id: str) -> dict[str
     if not isinstance(profile, dict):
         profile = {}
     outbox_id = f"outbox-{attempt_id}"
+    runtime = dict(runtime_identity or {})
     return {
         "schema": "ascendop.routed-test-preparation.v3",
         "outbox_id": outbox_id,
@@ -675,6 +727,15 @@ def _routed_payload(*, request: Any, selected: Any, attempt_id: str) -> dict[str
         "target_gateway_id": selected.gateway_id,
         "target_transport_mode": selected.transport_mode,
         "target_generation": selected.generation,
+        **(
+            {
+                "node_session_id": str(runtime["node_session_id"]),
+                "capability_generation": str(runtime["capability_generation"]),
+            }
+            if runtime.get("node_session_id")
+            and runtime.get("capability_generation")
+            else {}
+        ),
         "target_soc": list(selected.capabilities.get("soc", [])),
         "target_cann": list(selected.capabilities.get("cann", [])),
         "control_channel": selected.control_channel,

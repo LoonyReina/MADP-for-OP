@@ -1,0 +1,17 @@
+{
+  "schema": "ascendop.role-binding.v1",
+  "role_binding_id": "binding-manager-1",
+  "principal_id": "ascendop-system-assistant",
+  "agent_registration_id": "codex-ide.manager.test",
+  "native_session_id": "thread-manager-assistant",
+  "role": "manager",
+  "scope": {
+    "workspace_roots": [],
+    "operator_ids": [],
+    "capabilities": ["flow-control", "user-interaction"]
+  },
+  "generation": "binding-generation-1",
+  "state": "active",
+  "valid_from": "2026-08-17T00:00:00Z",
+  "valid_until": null
+}

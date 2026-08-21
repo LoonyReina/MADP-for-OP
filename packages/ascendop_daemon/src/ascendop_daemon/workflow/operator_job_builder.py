@@ -26,6 +26,14 @@ from ascendop_daemon.workflow.operator_job_files import (
     tree_digest,
     update_canonical_file_digest,
 )
+from ascendop_daemon.workflow.operator_job_runtime import (
+    gitpartner_source_root,
+)
+from ascendop_daemon.workflow.host_callback_overlay import (
+    HOST_CALLBACK_ATTRIBUTION_FLAG,
+    HOST_CALLBACK_OVERLAY_AUDIT,
+    apply_host_callback_overlay,
+)
 from ascendop_daemon.workflow.profile_rounds_override import (
     discover_profile_round_declarations,
 )
@@ -86,43 +94,6 @@ MAX_PERFORMANCE_STAGE_TIMEOUT_SECONDS = 1200
 PERFORMANCE_STAGE_TIMEOUT_GRACE_SECONDS = 60
 REGULAR_PROFILE_PROCESS_TIMEOUT_SECONDS = 90
 ENGINE_EXECUTION_DEADLINE_SECONDS = 300
-GITPARTNER_PRODUCT_DIR = "GitPartner"
-
-
-def gitpartner_source_root(root: Path) -> Path:
-    active_runtime_value = str(
-        os.environ.get("GITPARTNER_RUNTIME_SOURCE") or ""
-    ).strip()
-    product_value = str(
-        os.environ.get("ASCENDOP_GITPARTNER_PRODUCT") or GITPARTNER_PRODUCT_DIR
-    )
-    product = Path(product_value)
-    source_root = (
-        product.resolve() if product.is_absolute() else root.resolve() / product / "src"
-    )
-    candidates = [
-        *([Path(active_runtime_value).resolve()] if active_runtime_value else []),
-        source_root,
-        Path(__file__).resolve().parents[5] / GITPARTNER_PRODUCT_DIR / "src",
-    ]
-    source_root = next(
-        (
-            candidate
-            for candidate in candidates
-            if (
-                candidate / "limited_remote_partner" / "gateway" / "submit_job.py"
-            ).is_file()
-        ),
-        source_root,
-    )
-    marker = source_root / "limited_remote_partner" / "gateway" / "submit_job.py"
-    if not marker.is_file():
-        raise EngineJobBuildError(
-            f"canonical GitPartner product source is missing: {source_root}"
-        )
-    return source_root
-
-
 def build_performance_runtime_budget(
     root: Path,
     *,
@@ -349,7 +320,19 @@ def build_compatibility_job(
     native_workspace_attribution = (
         NATIVE_WORKSPACE_QUERY_ATTRIBUTION_FLAG in runtime_compatibility
     )
-    if RUNTIME_BOUNDARY_TRACE_FLAG in runtime_compatibility or native_workspace_attribution:
+    host_callback_attribution = (
+        HOST_CALLBACK_ATTRIBUTION_FLAG in runtime_compatibility
+    )
+    if host_callback_attribution:
+        apply_host_callback_overlay(
+            payload_root / "source_snapshot",
+            audit_copy=payload_root / "task_case" / HOST_CALLBACK_OVERLAY_AUDIT,
+        )
+    if (
+        RUNTIME_BOUNDARY_TRACE_FLAG in runtime_compatibility
+        or native_workspace_attribution
+        or host_callback_attribution
+    ):
         apply_runtime_boundary_overlay(
             payload_root / "task_case",
             native_attribution=native_workspace_attribution,
@@ -607,6 +590,8 @@ def build_compatibility_job(
         required_artifacts.append(
             "result/NATIVE_WORKSPACE_QUERY_ATTRIBUTION.json"
         )
+    if HOST_CALLBACK_ATTRIBUTION_FLAG in runtime_compatibility:
+        required_artifacts.append("result/HOST_CALLBACK_ATTRIBUTION.json")
     if "kernel-fault-attribution" in runtime_compatibility:
         required_artifacts.extend(
             [
@@ -1555,6 +1540,7 @@ def staged_test_shells(
             (
                 "for ARTIFACT in RUNTIME_BOUNDARY_TRACE.json runtime_boundary "
                 "NATIVE_WORKSPACE_QUERY_ATTRIBUTION.json "
+                "HOST_CALLBACK_ATTRIBUTION.json "
                 "KERNEL_FAULT_ATTRIBUTION.json kernel_fault; do "
                 'if [ -e "$ASCENDOP_ENGINE_JOB_ROOT/result/$ARTIFACT" ]; then '
                 'rm -rf "$RUN_DIR/$ARTIFACT"; cp -a '
@@ -1575,6 +1561,7 @@ def staged_test_shells(
                 "RUNTIME_COMPATIBILITY.json "
                 "RUNTIME_BOUNDARY_TRACE.json runtime_boundary "
                 "NATIVE_WORKSPACE_QUERY_ATTRIBUTION.json "
+                "HOST_CALLBACK_ATTRIBUTION.json "
                 "KERNEL_FAULT_ATTRIBUTION.json kernel_fault "
                 "OFFICIAL_TEMPLATE_SYNC.json INSTALL_LAYOUT.txt "
                 "case_cache_prepare.log times.tsv perf.log perf_batch_capture.log "

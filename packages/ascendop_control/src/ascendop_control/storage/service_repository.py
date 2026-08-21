@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .errors import ControlRepositoryError
+from .schema import CONTROL_SCHEMA_VERSION
 
 
 class ServiceRepository:
@@ -49,12 +50,12 @@ class ServiceRepository:
                     service_id, role, code_generation, wire_version,
                     database_schema, capabilities_json, state, boot_id,
                     heartbeat_at, lease_expires_at, details_json, updated_at
-                ) VALUES(?, ?, ?, 3, 12, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES(?, ?, ?, 3, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(service_id) DO UPDATE SET
                     role=excluded.role,
                     code_generation=excluded.code_generation,
                     wire_version=3,
-                    database_schema=12,
+                    database_schema=excluded.database_schema,
                     capabilities_json=excluded.capabilities_json,
                     state=excluded.state,
                     boot_id=excluded.boot_id,
@@ -67,6 +68,7 @@ class ServiceRepository:
                     service_id,
                     role,
                     code_generation,
+                    CONTROL_SCHEMA_VERSION,
                     json.dumps(normalized_capabilities, separators=(",", ":")),
                     state,
                     boot_id,
@@ -101,7 +103,7 @@ class ServiceRepository:
             "role": role,
             "code_generation": code_generation,
             "wire_version": 3,
-            "database_schema": 12,
+            "database_schema": CONTROL_SCHEMA_VERSION,
             "capabilities": normalized_capabilities,
             "state": state,
             "boot_id": boot_id,

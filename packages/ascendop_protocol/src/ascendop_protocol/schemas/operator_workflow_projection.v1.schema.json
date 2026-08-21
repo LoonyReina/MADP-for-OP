@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.operator-workflow-projection.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "operator_id", "agent_phase", "candidate_phase", "test_phase", "endpoint_phase", "recovery_phase", "gate", "primary_blocker", "headline_phase", "next_owner", "allowed_commands", "causative_evidence", "observed_at", "last_event_sequence", "freshness"],
+  "properties": {
+    "schema": {"const": "ascendop.operator-workflow-projection.v1"},
+    "operator_id": {"type": "string", "minLength": 1},
+    "agent_phase": {"type": "string", "minLength": 1},
+    "candidate_phase": {"type": "string", "minLength": 1},
+    "test_phase": {"type": "string", "minLength": 1},
+    "endpoint_phase": {"type": "string", "minLength": 1},
+    "recovery_phase": {"type": "string", "minLength": 1},
+    "gate": {"type": "object"},
+    "primary_blocker": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "object", "additionalProperties": true, "required": ["kind", "code", "details", "source_ref"], "properties": {"kind": {"type": "string", "minLength": 1}, "code": {"type": "string", "minLength": 1}, "details": {"type": "string", "minLength": 1}, "source_ref": {"type": "string", "minLength": 1}}}
+      ]
+    },
+    "headline_phase": {"type": "string", "minLength": 1},
+    "next_owner": {"type": "string", "minLength": 1},
+    "allowed_commands": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "causative_evidence": {"type": "object"},
+    "observed_at": {"type": "string", "minLength": 1},
+    "last_event_sequence": {"type": "integer", "minimum": 0},
+    "freshness": {"$ref": "#/$defs/freshness"}
+  },
+  "$defs": {
+    "freshness": {"type": "object", "additionalProperties": false, "required": ["state", "age_seconds", "source_updated_at"], "properties": {"state": {"enum": ["fresh", "stale", "unknown"]}, "age_seconds": {"type": "integer", "minimum": 0}, "source_updated_at": {"type": "string", "minLength": 1}}}
+  }
+}
