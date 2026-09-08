@@ -36,8 +36,11 @@ from ascendop_protocol.evidence import (
     EVIDENCE_OPERATION_REGISTRY_SCHEMA,
     EVIDENCE_OPERATION_REQUEST_SCHEMA,
     EVIDENCE_OPERATION_RESULT_SCHEMA,
+    EvidenceOperationContractError,
     evidence_operation_registry,
     evidence_operation_registry_digest,
+    evidence_operation_registry_for_identity,
+    validate_evidence_operation_parameters,
     validate_evidence_operation_request,
     validate_evidence_operation_result,
 )
@@ -97,6 +100,81 @@ def test_flow_v5_runtime_validators_accept_public_examples() -> None:
     )
 
 
+def test_runtime_validators_accept_pinned_historical_registry_identity() -> None:
+    generation = "flow-v5-evidence-operations-v1"
+    digest = "4e757a33a1c2184a3f9ad7434203189e510ce7ab4fccfedf2b9e6496e2672c62"
+    historical = evidence_operation_registry_for_identity(generation, digest)
+    assert historical["generation"] == generation
+
+    request = _example("evidence_operation_request.profile_collect.json")
+    result = _example("evidence_operation_result.profile_collect.json")
+    for contract in (request, result):
+        contract["registry_generation"] = generation
+        contract["registry_digest"] = digest
+
+    assert validate_evidence_operation_request(request)["registry_digest"] == digest
+    assert validate_evidence_operation_result(result)["registry_digest"] == digest
+
+
+def test_runtime_validators_reject_unknown_historical_registry_identity() -> None:
+    request = _example("evidence_operation_request.profile_collect.json")
+    request["registry_generation"] = "flow-v5-evidence-operations-v0"
+    request["registry_digest"] = "0" * 64
+
+    with pytest.raises(
+        EvidenceOperationContractError,
+        match="not current or pinned history",
+    ):
+        validate_evidence_operation_request(request)
+
+
+def test_profile_collect_accepts_validated_runtime_kernel_family() -> None:
+    request = _example("evidence_operation_request.profile_collect.json")
+    request["parameters"].update(
+        {
+            "profiler_kernel_name": "inplace_update",
+            "profiler_kernel_selection": "prefix-postfilter",
+        }
+    )
+
+    assert validate_evidence_operation_request(request)["parameters"][
+        "profiler_kernel_selection"
+    ] == "prefix-postfilter"
+
+    request["parameters"]["profiler_kernel_selection"] = "substring"
+    with pytest.raises(
+        EvidenceOperationContractError,
+        match="profiler_kernel_selection",
+    ):
+        validate_evidence_operation_request(request)
+
+
+def test_performance_accepts_exactly_one_baseline_mode() -> None:
+    common = {
+        "candidate_id": "candidate-1",
+        "test_version": "test-v1",
+        "case_version": "case-v1",
+    }
+
+    validate_evidence_operation_parameters(
+        "test.performance", {**common, "baseline_result_id": "baseline-1"}
+    )
+    validate_evidence_operation_parameters(
+        "test.performance", {**common, "baseline_bootstrap": True}
+    )
+    with pytest.raises(EvidenceOperationContractError, match="baseline_result_id"):
+        validate_evidence_operation_parameters("test.performance", common)
+    with pytest.raises(EvidenceOperationContractError, match="mutually exclusive"):
+        validate_evidence_operation_parameters(
+            "test.performance",
+            {
+                **common,
+                "baseline_result_id": "baseline-1",
+                "baseline_bootstrap": True,
+            },
+        )
+
+
 def test_one_native_session_may_hold_distinct_manager_and_assistant_bindings() -> None:
     manager = _example("role_binding.manager.json")
     assistant = {
@@ -139,6 +217,56 @@ def test_every_v5_action_kind_has_a_typed_payload(action_kind: str) -> None:
     assert errors == []
     action["payload"] = {}
     with pytest.raises(ActorContractError, match="payload"):
+        validate_actor_action_envelope(action)
+
+
+@pytest.mark.parametrize("slot_count", [1, 8])
+def test_submission_adapter_cardinality_is_operator_local(slot_count: int) -> None:
+    action = _typed_action("assistant.official-submit")
+    paths = [f"opaque/slot-{index}.blob" for index in range(1, slot_count + 1)]
+    action["payload"]["source_file_digests"] = {path: "e" * 64 for path in paths}
+    action["payload"]["submission_adapter"]["editable_slots"] = [
+        {
+            "slot_id": f"editor-{index}",
+            "project_path": path,
+            "source_sha256": "e" * 64,
+            "dom_lf_sha256": "f" * 64,
+        }
+        for index, path in enumerate(paths, start=1)
+    ]
+
+    validate_actor_action_envelope(action)
+    assert list(
+        Draft202012Validator(load_schema(ACTOR_ACTION_ENVELOPE_SCHEMA)).iter_errors(
+            action
+        )
+    ) == []
+
+
+def test_submission_adapter_rejects_empty_slots() -> None:
+    action = _typed_action("assistant.official-submit")
+    action["payload"]["submission_adapter"]["editable_slots"] = []
+
+    with pytest.raises(ActorContractError, match="must not be empty"):
+        validate_actor_action_envelope(action)
+    assert list(
+        Draft202012Validator(load_schema(ACTOR_ACTION_ENVELOPE_SCHEMA)).iter_errors(
+            action
+        )
+    )
+
+
+@pytest.mark.parametrize("duplicate_field", ["slot_id", "project_path"])
+def test_submission_adapter_rejects_duplicate_slot_identity(
+    duplicate_field: str,
+) -> None:
+    action = _typed_action("assistant.official-submit")
+    slots = action["payload"]["submission_adapter"]["editable_slots"]
+    slots[1][duplicate_field] = slots[0][duplicate_field]
+    if duplicate_field == "project_path":
+        slots[1]["source_sha256"] = slots[0]["source_sha256"]
+
+    with pytest.raises(ActorContractError, match="slot identities must be unique"):
         validate_actor_action_envelope(action)
 
 
@@ -341,6 +469,27 @@ def _typed_action(action_kind: str) -> dict[str, object]:
                     "rules_generation": "rules-1",
                 }
             )
+        if action_kind == "assistant.official-submit":
+            payload["source_file_digests"] = {
+                f"opaque/slot-{index}.blob": "e" * 64
+                for index in range(1, 8)
+            }
+            payload["submission_adapter"] = {
+                "schema": "ascendop.operator-local-submission-adapter.v1",
+                "adapter_id": "demo-local-v1",
+                "normalization": "lf",
+                "hash_algorithm": "sha256",
+                "single_click": True,
+                "editable_slots": [
+                    {
+                        "slot_id": f"editor-{index}",
+                        "project_path": f"opaque/slot-{index}.blob",
+                        "source_sha256": "e" * 64,
+                        "dom_lf_sha256": "e" * 64,
+                    }
+                    for index in range(1, 8)
+                ],
+            }
         if action_kind in {
             "assistant.official-poll",
             "assistant.official-import-result",

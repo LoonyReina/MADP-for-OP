@@ -1,6 +1,7 @@
 {
   "schema": "madp.current-publication.v1",
-  "milestone": "flow-v5-preliminary-public-core",
-  "provenance_path": "release/flow-v5-preview/PROVENANCE.json",
-  "public_tag": "preview-2026-08-21-flow-v5-core"
+  "milestone": "v5-unified-core",
+  "publication_status": "local-candidate-not-published",
+  "provenance_path": "release/v5-unified-core/PROVENANCE.json",
+  "public_tag": null
 }

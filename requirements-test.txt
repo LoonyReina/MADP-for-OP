@@ -1,0 +1,5 @@
+pytest>=8,<9
+jsonschema>=4,<5
+build>=1,<2
+setuptools>=77
+wheel

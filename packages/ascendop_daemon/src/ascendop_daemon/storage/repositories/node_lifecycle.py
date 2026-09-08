@@ -123,6 +123,10 @@ class NodeLifecycleRepository:
                 "SELECT state, COUNT(*) AS count FROM assistant_action_requests "
                 "GROUP BY state ORDER BY state"
             ).fetchall()
+            continuation_rows = conn.execute(
+                "SELECT topic,state,COUNT(*) AS count FROM control_outbox_v5 "
+                "GROUP BY topic,state ORDER BY topic,state"
+            ).fetchall()
             evidence_operation_rows = conn.execute(
                 "SELECT state, COUNT(*) AS count FROM evidence_operation_requests_v5 "
                 "GROUP BY state ORDER BY state"
@@ -145,6 +149,7 @@ class NodeLifecycleRepository:
                 row["state"]: row["count"] for row in preparation_rows
             },
             "outbox": {row["state"]: row["count"] for row in outbox_rows},
+            "control_outbox": [dict(row) for row in continuation_rows],
             "returns": {row["state"]: row["count"] for row in return_rows},
             "nodes": [dict(row) for row in node_rows],
             "assistant_actions": {

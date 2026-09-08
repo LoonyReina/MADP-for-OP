@@ -26,6 +26,23 @@ NATIVE_TURN_OUTCOME_SCHEMA = "ascendop.native-turn-outcome.v1"
 AGENT_ACTION_OUTCOME_SCHEMA = "ascendop.agent-action-outcome.v1"
 AGENT_ACTION_CONTEXT_V2_SCHEMA = "ascendop.agent-action-context.v2"
 AGENT_ACTION_CONTEXT_V3_SCHEMA = "ascendop.agent-action-context.v3"
+STANDALONE_AGENT_ACTION_CONTEXT_V1_SCHEMA = (
+    "ascendop.standalone-agent-action-context.v1"
+)
+STANDALONE_AGENT_ACTION_CONTEXT_V2_SCHEMA = (
+    "ascendop.standalone-agent-action-context.v2"
+)
+STANDALONE_AGENT_ACTION_CONTEXT_V3_SCHEMA = (
+    "ascendop.standalone-agent-action-context.v3"
+)
+STANDALONE_AGENT_ACTION_CONTEXT_V4_SCHEMA = (
+    "ascendop.standalone-agent-action-context.v4"
+)
+STANDALONE_AGENT_ACTION_CONTEXT_V5_SCHEMA = (
+    "ascendop.standalone-agent-action-context.v5"
+)
+STANDALONE_AGENT_ACTION_CONTEXT_SCHEMA = STANDALONE_AGENT_ACTION_CONTEXT_V4_SCHEMA
+SOLVER_REFERENCE_CONTEXT_V2_SCHEMA = "ascendop.solver-reference-context.v2"
 
 
 class ActorContractError(ValueError):
@@ -225,6 +242,11 @@ def _validate_action_payload(action: str, payload: Mapping[str, Any]) -> None:
                 payload.get("source_file_digests"),
                 "payload.source_file_digests",
             )
+        if action == "assistant.official-submit":
+            _validate_submission_adapter(
+                payload.get("submission_adapter"),
+                payload.get("source_file_digests"),
+            )
         if action in {
             "assistant.official-poll",
             "assistant.official-import-result",
@@ -283,6 +305,44 @@ def _validate_action_payload(action: str, payload: Mapping[str, Any]) -> None:
         _relative_path_list(payload.get("artifact_refs"), "payload.artifact_refs")
         return
     raise ActorContractError(f"action payload validator is missing: {action}")
+
+
+def _validate_submission_adapter(raw: Any, source_digests: Any) -> None:
+    adapter = _object(raw, "payload.submission_adapter")
+    if adapter.get("schema") != "ascendop.operator-local-submission-adapter.v1":
+        raise ActorContractError("unsupported payload.submission_adapter schema")
+    _required_text(adapter, "adapter_id", "normalization", "hash_algorithm")
+    if adapter["normalization"] != "lf" or adapter["hash_algorithm"] != "sha256":
+        raise ActorContractError("submission adapter readback must use LF and SHA-256")
+    if adapter.get("single_click") is not True:
+        raise ActorContractError("submission adapter must require single click")
+    slots = adapter.get("editable_slots")
+    if not isinstance(slots, list) or not slots:
+        raise ActorContractError("submission adapter editable slots must not be empty")
+    digests = _object(source_digests, "payload.source_file_digests")
+    slot_ids: set[str] = set()
+    paths: set[str] = set()
+    for index, raw_slot in enumerate(slots):
+        slot = _object(raw_slot, f"payload.submission_adapter.editable_slots[{index}]")
+        slot_id = _text(slot.get("slot_id"), f"editable_slots[{index}].slot_id")
+        path = _text(slot.get("project_path"), f"editable_slots[{index}].project_path")
+        source_digest = _text(
+            slot.get("source_sha256"),
+            f"editable_slots[{index}].source_sha256",
+        )
+        dom_digest = _text(
+            slot.get("dom_lf_sha256"),
+            f"editable_slots[{index}].dom_lf_sha256",
+        )
+        _relative_path(path, f"editable_slots[{index}].project_path")
+        _sha256(source_digest, f"editable_slots[{index}].source_sha256")
+        _sha256(dom_digest, f"editable_slots[{index}].dom_lf_sha256")
+        if slot_id in slot_ids or path in paths:
+            raise ActorContractError("submission adapter slot identities must be unique")
+        if digests.get(path) != source_digest:
+            raise ActorContractError("submission adapter slot digest is not source-bound")
+        slot_ids.add(slot_id)
+        paths.add(path)
 
 
 def _required_text(value: Mapping[str, Any], *fields: str) -> None:
@@ -423,14 +483,28 @@ def validate_agent_action_outcome(raw: Mapping[str, Any]) -> dict[str, Any]:
     return dict(raw)
 
 
-def validate_agent_action_context_v2(raw: Mapping[str, Any]) -> dict[str, Any]:
+def validate_agent_action_context_v2(
+    raw: Mapping[str, Any],
+    *,
+    require_current_catalog: bool = True,
+) -> dict[str, Any]:
     _schema(raw, AGENT_ACTION_CONTEXT_V2_SCHEMA)
-    return _validate_agent_action_context_common(raw)
+    return _validate_agent_action_context_common(
+        raw,
+        require_current_catalog=require_current_catalog,
+    )
 
 
-def validate_agent_action_context_v3(raw: Mapping[str, Any]) -> dict[str, Any]:
+def validate_agent_action_context_v3(
+    raw: Mapping[str, Any],
+    *,
+    require_current_catalog: bool = True,
+) -> dict[str, Any]:
     _schema(raw, AGENT_ACTION_CONTEXT_V3_SCHEMA)
-    value = _validate_agent_action_context_common(raw)
+    value = _validate_agent_action_context_common(
+        raw,
+        require_current_catalog=require_current_catalog,
+    )
     attempt = _object(raw.get("attempt"), "attempt")
     attempt_id = _text(attempt.get("attempt_id"), "attempt.attempt_id")
     ordinal = attempt.get("ordinal")
@@ -529,8 +603,370 @@ def validate_agent_action_context_v3(raw: Mapping[str, Any]) -> dict[str, Any]:
     return value
 
 
+def validate_standalone_agent_action_context(
+    raw: Mapping[str, Any],
+) -> dict[str, Any]:
+    schema = raw.get("schema") if isinstance(raw, Mapping) else None
+    if schema not in {
+        STANDALONE_AGENT_ACTION_CONTEXT_V1_SCHEMA,
+        STANDALONE_AGENT_ACTION_CONTEXT_V2_SCHEMA,
+        STANDALONE_AGENT_ACTION_CONTEXT_V3_SCHEMA,
+        STANDALONE_AGENT_ACTION_CONTEXT_V4_SCHEMA,
+        STANDALONE_AGENT_ACTION_CONTEXT_V5_SCHEMA,
+    }:
+        raise ActorContractError(
+            "unsupported standalone Agent action context schema"
+        )
+    _schema(raw, str(schema))
+    for field in (
+        "context_id",
+        "action_id",
+        "action_kind",
+        "effective_role",
+        "campaign_id",
+        "operator_id",
+        "native_session_id",
+        "contract_revision",
+        "workspace",
+        "case_path",
+        "run_root",
+        "outcome_path",
+        "task_binding_sha256",
+        "created_at",
+    ):
+        _text(raw.get(field), field)
+    _token(raw["context_id"], "context_id")
+    _token(raw["action_id"], "action_id")
+    _sha256(raw["contract_revision"], "contract_revision")
+    _sha256(raw["task_binding_sha256"], "task_binding_sha256")
+    for field in ("workspace", "case_path", "run_root", "outcome_path"):
+        _relative_path(raw[field], field)
+
+    action = str(raw["action_kind"])
+    if action not in {
+        "solver.iterate",
+        "solver.repair",
+        "tester.casegen",
+        "tester.case-repair",
+    }:
+        raise ActorContractError(
+            f"unsupported standalone Agent action kind: {action}"
+        )
+    role = str(raw["effective_role"])
+    if role != action_definition(action)["role"]:
+        raise ActorContractError(
+            f"standalone action {action} does not belong to role {role}"
+        )
+    execution_phase = None
+    if schema == STANDALONE_AGENT_ACTION_CONTEXT_V5_SCHEMA:
+        execution_phase = _text(raw.get("execution_phase"), "execution_phase")
+        if execution_phase not in {"case-authoring", "candidate-test"}:
+            raise ActorContractError("unsupported standalone execution phase")
+        if role == "tester" and execution_phase != "case-authoring":
+            raise ActorContractError("standalone Tester actions require case-authoring")
+    case_authoring = role == "tester" or execution_phase == "case-authoring"
+
+    if schema in {
+        STANDALONE_AGENT_ACTION_CONTEXT_V2_SCHEMA,
+        STANDALONE_AGENT_ACTION_CONTEXT_V3_SCHEMA,
+        STANDALONE_AGENT_ACTION_CONTEXT_V4_SCHEMA,
+        STANDALONE_AGENT_ACTION_CONTEXT_V5_SCHEMA,
+    }:
+        _sha256(raw.get("input_source_sha256"), "input_source_sha256")
+        predecessors = raw.get("predecessor_evidence")
+        if not isinstance(predecessors, list) or len(predecessors) > 2:
+            raise ActorContractError(
+                "predecessor_evidence must contain at most two entries"
+            )
+        predecessor_ids: set[str] = set()
+        for index, item in enumerate(predecessors):
+            field = f"predecessor_evidence[{index}]"
+            evidence = _object(item, field)
+            predecessor_id = _token(
+                evidence.get("action_id"), f"{field}.action_id"
+            )
+            if predecessor_id in predecessor_ids:
+                raise ActorContractError(
+                    "predecessor_evidence action ids must be unique"
+                )
+            predecessor_ids.add(predecessor_id)
+            predecessor_action = _text(
+                evidence.get("action_kind"), f"{field}.action_kind"
+            )
+            if predecessor_action not in {
+                "solver.iterate",
+                "solver.repair",
+                "tester.casegen",
+                "tester.case-repair",
+            }:
+                raise ActorContractError(
+                    f"unsupported predecessor action kind: {predecessor_action}"
+                )
+            predecessor_role = _text(
+                evidence.get("effective_role"), f"{field}.effective_role"
+            )
+            if predecessor_role != action_definition(predecessor_action)["role"]:
+                raise ActorContractError(
+                    "predecessor evidence role does not match action kind"
+                )
+            _relative_path(evidence.get("outcome_ref"), f"{field}.outcome_ref")
+            _sha256(evidence.get("outcome_sha256"), f"{field}.outcome_sha256")
+            _text(evidence.get("completed_at"), f"{field}.completed_at")
+            disposition = evidence.get("disposition")
+            if disposition is not None and disposition not in FLOW_V5_OUTCOMES:
+                raise ActorContractError(
+                    f"unsupported predecessor disposition: {disposition}"
+                )
+            _text(evidence.get("summary"), f"{field}.summary")
+            _relative_path_list(
+                evidence.get("evidence_refs"), f"{field}.evidence_refs"
+            )
+
+    if schema in {
+        STANDALONE_AGENT_ACTION_CONTEXT_V3_SCHEMA,
+        STANDALONE_AGENT_ACTION_CONTEXT_V4_SCHEMA,
+        STANDALONE_AGENT_ACTION_CONTEXT_V5_SCHEMA,
+    }:
+        reference = raw.get("reference_context")
+        if (role == "solver" and schema == STANDALONE_AGENT_ACTION_CONTEXT_V5_SCHEMA
+                and isinstance(reference, Mapping) and reference.get("schema") == SOLVER_REFERENCE_CONTEXT_V2_SCHEMA):
+            _validate_optional_solver_references(reference)
+            if not case_authoring and _object(raw.get("test"), "test").get("mode") not in {"correctness", "both", "performance"}:
+                raise ActorContractError("optional Solver references require a supported test mode")
+        elif role == "tester":
+            if reference is not None:
+                raise ActorContractError(
+                    "standalone Tester action cannot receive Solver reference context"
+                )
+        else:
+            reference_value = _object(reference, "reference_context")
+            if reference_value.get("schema") != "ascendop.solver-reference-context.v1":
+                raise ActorContractError(
+                    "unsupported standalone Solver reference context schema"
+                )
+            _sha256(reference_value.get("revision"), "reference_context.revision")
+            expected_policy = (
+                "read-only-evidence-revalidate-against-cann90-ascend910b"
+                if schema == STANDALONE_AGENT_ACTION_CONTEXT_V5_SCHEMA
+                else "read-only-evidence-revalidate-against-august-cann90-ascend910b"
+            )
+            if reference_value.get("applicability_policy") != expected_policy:
+                raise ActorContractError(
+                    "standalone Solver reference applicability policy drifted"
+                )
+            _relative_path(
+                reference_value.get("official_task_root"),
+                "reference_context.official_task_root",
+            )
+            if schema == STANDALONE_AGENT_ACTION_CONTEXT_V5_SCHEMA:
+                reference_index = _object(
+                    reference_value.get("workspace_reference_index"),
+                    "reference_context.workspace_reference_index",
+                )
+                _relative_path(
+                    reference_index.get("path"),
+                    "reference_context.workspace_reference_index.path",
+                )
+                _sha256(
+                    reference_index.get("sha256"),
+                    "reference_context.workspace_reference_index.sha256",
+                )
+            else:
+                official = _object(
+                    reference_value.get("official_cann_references"),
+                    "reference_context.official_cann_references",
+                )
+                _relative_path(
+                    official.get("index_path"),
+                    "reference_context.official_cann_references.index_path",
+                )
+                _sha256(
+                    official.get("index_sha256"),
+                    "reference_context.official_cann_references.index_sha256",
+                )
+                historical = _object(
+                    reference_value.get("historical_reference"),
+                    "reference_context.historical_reference",
+                )
+                _relative_path(
+                    historical.get("manifest_path"),
+                    "reference_context.historical_reference.manifest_path",
+                )
+                _sha256(
+                    historical.get("manifest_sha256"),
+                    "reference_context.historical_reference.manifest_sha256",
+                )
+            _relative_path(
+                reference_value.get("cann90_api_root"),
+                "reference_context.cann90_api_root",
+            )
+            knowledge = reference_value.get("op_knowledge")
+            if knowledge is not None:
+                knowledge_value = _object(
+                    knowledge, "reference_context.op_knowledge"
+                )
+                _relative_path(
+                    knowledge_value.get("root"),
+                    "reference_context.op_knowledge.root",
+                )
+                _sha256(
+                    knowledge_value.get("tree_sha256"),
+                    "reference_context.op_knowledge.tree_sha256",
+                )
+
+    endpoint = raw.get("endpoint")
+    release = raw.get("release")
+    input_case_sha256 = raw.get("input_case_sha256")
+    request = _object(raw.get("request"), "request")
+    _text(request.get("idempotency_key"), "request.idempotency_key")
+    logical_request_id = request.get("logical_request_id")
+    if case_authoring:
+        authority_label = (
+            "standalone Tester casegen"
+            if role == "tester"
+            else "standalone case authoring"
+        )
+        if any(value is not None for value in (endpoint, release, input_case_sha256)):
+            raise ActorContractError(
+                f"{authority_label} cannot receive endpoint, release, or case seal"
+            )
+        if logical_request_id is not None:
+            raise ActorContractError(
+                f"{authority_label} cannot receive a test request id"
+            )
+    else:
+        _sha256(input_case_sha256, "input_case_sha256")
+        endpoint_value = _object(endpoint, "endpoint")
+        _relative_path(endpoint_value.get("config_path"), "endpoint.config_path")
+        _sha256(endpoint_value.get("config_sha256"), "endpoint.config_sha256")
+        _text(endpoint_value.get("endpoint_id"), "endpoint.endpoint_id")
+        release_value = _object(release, "release")
+        _text(release_value.get("release_id"), "release.release_id")
+        _sha256(
+            release_value.get("release_generation"),
+            "release.release_generation",
+        )
+        _token(logical_request_id, "request.logical_request_id")
+
+    test = raw.get("test")
+    if schema == STANDALONE_AGENT_ACTION_CONTEXT_V5_SCHEMA and case_authoring:
+        if test is not None:
+            raise ActorContractError("standalone case authoring cannot receive a test")
+    else:
+        test = _object(test, "test")
+        for field in ("mode", "test_version", "case_version", "case_range"):
+            _text(test.get(field), f"test.{field}")
+        if schema in {
+            STANDALONE_AGENT_ACTION_CONTEXT_V4_SCHEMA,
+            STANDALONE_AGENT_ACTION_CONTEXT_V5_SCHEMA,
+        }:
+            if schema == STANDALONE_AGENT_ACTION_CONTEXT_V4_SCHEMA:
+                operation_code = "test.performance"
+            else:
+                operation_code = str(test.get("operation_code") or "")
+                if operation_code not in {"test.correctness", "test.performance"}:
+                    raise ActorContractError(
+                        "standalone v5 test operation must be correctness or performance"
+                    )
+            if operation_code == "test.performance":
+                if test["mode"] != "both":
+                    raise ActorContractError(
+                        "standalone performance actions require mode=both"
+                    )
+                _text(test.get("perf_case_range"), "test.perf_case_range")
+            elif test["mode"] != "correctness":
+                raise ActorContractError(
+                    "standalone correctness actions require mode=correctness"
+                )
+        elif test["mode"] != "correctness":
+            raise ActorContractError(
+                "legacy standalone P1 actions support correctness only"
+            )
+        timeout = test.get("timeout_seconds")
+        if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout <= 0:
+            raise ActorContractError("test.timeout_seconds must be a positive integer")
+
+    if schema in {
+        STANDALONE_AGENT_ACTION_CONTEXT_V4_SCHEMA,
+        STANDALONE_AGENT_ACTION_CONTEXT_V5_SCHEMA,
+    }:
+        lifecycle = raw.get("case_lifecycle")
+        if case_authoring:
+            lifecycle_value = _object(lifecycle, "case_lifecycle")
+            allowed_triggers = {
+                "initial_case",
+                "usage_exhausted",
+                "new_official_feedback",
+                "wrapper_identity_mismatch",
+            }
+            if schema == STANDALONE_AGENT_ACTION_CONTEXT_V5_SCHEMA and raw.get("effective_role") == "solver":
+                allowed_triggers.add("solver_requested")
+            if lifecycle_value.get("trigger") not in allowed_triggers:
+                raise ActorContractError("unsupported case lifecycle trigger")
+            _text(
+                lifecycle_value.get("active_case_version"),
+                "case_lifecycle.active_case_version",
+            )
+            active_case_sha = lifecycle_value.get("active_case_sha256")
+            if active_case_sha is not None:
+                _sha256(active_case_sha, "case_lifecycle.active_case_sha256")
+        elif lifecycle is not None:
+            raise ActorContractError(
+                "standalone Solver action cannot receive a case lifecycle trigger"
+            )
+
+    launcher = _object(raw.get("launcher"), "launcher")
+    _text(launcher.get("python_executable"), "launcher.python_executable")
+    if launcher.get("module") != "ascendop_test_gateway.cli":
+        raise ActorContractError("standalone launcher module is not allowlisted")
+    python_path = _string_list(launcher.get("python_path"), "launcher.python_path")
+    if not python_path:
+        raise ActorContractError("launcher.python_path must not be empty")
+    harness = _object(raw.get("harness"), "harness")
+    _text(harness.get("python_executable"), "harness.python_executable")
+    _text(harness.get("daemon_entrypoint"), "harness.daemon_entrypoint")
+
+    outputs = raw.get("output_contracts")
+    if not isinstance(outputs, list) or not outputs:
+        raise ActorContractError("output_contracts must not be empty")
+    seen: set[str] = set()
+    for index, item in enumerate(outputs):
+        output = _object(item, f"output_contracts[{index}]")
+        output_id = _text(output.get("output_id"), f"output_contracts[{index}].output_id")
+        if output_id in seen:
+            raise ActorContractError("output contract ids must be unique")
+        seen.add(output_id)
+        kind = _text(
+            output.get("output_kind"),
+            f"output_contracts[{index}].output_kind",
+        )
+        if kind not in {"case-bundle", "source-change", "standalone-test-result"}:
+            raise ActorContractError(f"unsupported standalone output kind: {kind}")
+        _relative_path(
+            output.get("artifact_ref"),
+            f"output_contracts[{index}].artifact_ref",
+        )
+        if not isinstance(output.get("required"), bool):
+            raise ActorContractError("output contract required flag must be boolean")
+    declared_kinds = {str(item["output_kind"]) for item in outputs}
+    required_kinds = {
+        str(item["output_kind"])
+        for item in outputs
+        if bool(item.get("required"))
+    }
+    expected = "case-bundle" if case_authoring else "standalone-test-result"
+    available_kinds = required_kinds if case_authoring else declared_kinds
+    if expected not in available_kinds:
+        raise ActorContractError(
+            f"standalone {role} action requires output kind {expected}"
+        )
+    return dict(raw)
+
+
 def _validate_agent_action_context_common(
     raw: Mapping[str, Any],
+    *,
+    require_current_catalog: bool = True,
 ) -> dict[str, Any]:
     for field in (
         "context_id",
@@ -541,11 +977,13 @@ def _validate_agent_action_context_common(
         "created_at",
     ):
         _text(raw.get(field), field)
-    catalog = flow_v5_catalog()
-    if raw["catalog_generation"] != catalog["generation"]:
-        raise ActorContractError("Agent context catalog generation is stale")
-    if raw["catalog_digest"] != flow_v5_catalog_digest():
-        raise ActorContractError("Agent context catalog digest is stale")
+    _sha256(raw["catalog_digest"], "catalog_digest")
+    if require_current_catalog:
+        catalog = flow_v5_catalog()
+        if raw["catalog_generation"] != catalog["generation"]:
+            raise ActorContractError("Agent context catalog generation is stale")
+        if raw["catalog_digest"] != flow_v5_catalog_digest():
+            raise ActorContractError("Agent context catalog digest is stale")
     if raw["role"] not in FLOW_V5_ROLES:
         raise ActorContractError(f"unsupported Agent context role: {raw['role']}")
     for field in (
@@ -633,6 +1071,29 @@ def _sha256_mapping(value: Any, field: str) -> dict[str, str]:
     return result
 
 
+def _validate_optional_solver_references(value: Mapping[str, Any]) -> None:
+    if set(value) != {"schema", "applicability_policy", "official_task_root", "optional"}:
+        raise ActorContractError("optional reference context fields differ from v2")
+    if value["applicability_policy"] != "read-only-evidence-revalidate-against-cann90-ascend910b":
+        raise ActorContractError("optional reference applicability policy drifted")
+    _relative_path(value["official_task_root"], "reference_context.official_task_root")
+    optional = _object(value["optional"], "reference_context.optional")
+    if set(optional) != {"workspace_reference_index", "cann90_api", "op_knowledge"}:
+        raise ActorContractError("optional reference entries differ from v2")
+    for name, raw in optional.items():
+        item = _object(raw, f"reference_context.optional.{name}")
+        if set(item) != {"path", "state", "reason"} or item.get("state") not in {"available", "unavailable"}:
+            raise ActorContractError("invalid optional reference availability")
+        if item["path"] is not None:
+            _relative_path(item["path"], f"reference_context.optional.{name}.path")
+        if not isinstance(item["reason"], str) or len(item["reason"]) > 300:
+            raise ActorContractError("optional reference reason must be bounded text")
+        if item["state"] == "available" and (item["path"] is None or item["reason"]):
+            raise ActorContractError("available reference requires a path and no failure reason")
+        if item["state"] == "unavailable" and not item["reason"].strip():
+            raise ActorContractError("unavailable reference requires a reason")
+
+
 def _relative_path(value: Any, field: str) -> str:
     text = _text(value, field).replace("\\", "/")
     if text.startswith("/") or any(part in {"", ".."} for part in text.split("/")):
@@ -669,6 +1130,12 @@ __all__ = [
     "ACTOR_ACTION_RECEIPT_SCHEMA",
     "AGENT_ACTION_CONTEXT_V2_SCHEMA",
     "AGENT_ACTION_CONTEXT_V3_SCHEMA",
+    "STANDALONE_AGENT_ACTION_CONTEXT_V1_SCHEMA",
+    "STANDALONE_AGENT_ACTION_CONTEXT_V2_SCHEMA",
+    "STANDALONE_AGENT_ACTION_CONTEXT_V3_SCHEMA",
+    "STANDALONE_AGENT_ACTION_CONTEXT_V4_SCHEMA",
+    "STANDALONE_AGENT_ACTION_CONTEXT_V5_SCHEMA",
+    "STANDALONE_AGENT_ACTION_CONTEXT_SCHEMA",
     "AGENT_ACTION_OUTCOME_SCHEMA",
     "NATIVE_TURN_OUTCOME_SCHEMA",
     "ROLE_BINDING_SCHEMA",
@@ -678,6 +1145,7 @@ __all__ = [
     "validate_agent_action_context_v2",
     "validate_agent_action_context_v3",
     "validate_agent_action_outcome",
+    "validate_standalone_agent_action_context",
     "validate_native_turn_outcome",
     "validate_role_binding",
 ]

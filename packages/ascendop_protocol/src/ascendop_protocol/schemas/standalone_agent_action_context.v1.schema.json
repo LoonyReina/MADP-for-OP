@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.standalone-agent-action-context.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "context_id", "action_id", "action_kind", "effective_role",
+    "campaign_id", "operator_id", "native_session_id", "contract_revision",
+    "workspace", "case_path", "run_root", "task_binding_sha256",
+    "input_case_sha256", "endpoint", "release", "test", "request",
+    "launcher", "harness", "outcome_path", "output_contracts", "created_at"
+  ],
+  "properties": {
+    "schema": {"const": "ascendop.standalone-agent-action-context.v1"},
+    "context_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "action_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "action_kind": {"enum": ["solver.iterate", "solver.repair", "tester.casegen", "tester.case-repair"]},
+    "effective_role": {"enum": ["solver", "tester"]},
+    "campaign_id": {"type": "string", "minLength": 1},
+    "operator_id": {"type": "string", "minLength": 1},
+    "native_session_id": {"type": "string", "minLength": 1},
+    "contract_revision": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "workspace": {"$ref": "#/$defs/relative_path"},
+    "case_path": {"$ref": "#/$defs/relative_path"},
+    "case_bundle": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "schema", "manifest_path", "case_range_source", "required_paths",
+        "contract_command", "contract_generation"
+      ],
+      "properties": {
+        "schema": {"const": "ascendop.standalone-case-bundle-contract.v1"},
+        "manifest_path": {"$ref": "#/$defs/relative_path"},
+        "case_range_source": {"const": "manifest"},
+        "required_paths": {
+          "type": "array", "minItems": 3, "uniqueItems": true,
+          "items": {"$ref": "#/$defs/relative_path"}
+        },
+        "contract_command": {"type": "string", "minLength": 1},
+        "contract_generation": {"type": "string", "minLength": 1}
+      }
+    },
+    "run_root": {"$ref": "#/$defs/relative_path"},
+    "task_binding_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "input_case_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "endpoint": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["config_path", "config_sha256", "endpoint_id"],
+          "properties": {
+            "config_path": {"$ref": "#/$defs/relative_path"},
+            "config_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "endpoint_id": {"type": "string", "minLength": 1}
+          }
+        }
+      ]
+    },
+    "release": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["release_id", "release_generation"],
+          "properties": {
+            "release_id": {"type": "string", "minLength": 1},
+            "release_generation": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+          }
+        }
+      ]
+    },
+    "test": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mode", "test_version", "case_version", "case_range", "timeout_seconds"],
+      "properties": {
+        "mode": {"const": "correctness"},
+        "test_version": {"type": "string", "minLength": 1},
+        "case_version": {"type": "string", "minLength": 1},
+        "case_range": {"type": "string", "minLength": 1},
+        "timeout_seconds": {"type": "integer", "minimum": 1}
+      }
+    },
+    "request": {
+      "type": "object", "additionalProperties": false,
+      "required": ["logical_request_id", "idempotency_key"],
+      "properties": {
+        "logical_request_id": {"type": ["string", "null"]},
+        "idempotency_key": {"type": "string", "minLength": 1}
+      }
+    },
+    "launcher": {
+      "type": "object", "additionalProperties": false,
+      "required": ["python_executable", "module", "python_path"],
+      "properties": {
+        "python_executable": {"type": "string", "minLength": 1},
+        "module": {"const": "ascendop_test_gateway.cli"},
+        "python_path": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "harness": {
+      "type": "object", "additionalProperties": false,
+      "required": ["python_executable", "daemon_entrypoint"],
+      "properties": {
+        "python_executable": {"type": "string", "minLength": 1},
+        "daemon_entrypoint": {"type": "string", "minLength": 1}
+      }
+    },
+    "outcome_path": {"$ref": "#/$defs/relative_path"},
+    "output_contracts": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["output_id", "output_kind", "artifact_ref", "required"],
+        "properties": {
+          "output_id": {"type": "string", "minLength": 1},
+          "output_kind": {"enum": ["case-bundle", "source-change", "standalone-test-result"]},
+          "artifact_ref": {"$ref": "#/$defs/relative_path"},
+          "required": {"type": "boolean"}
+        }
+      }
+    },
+    "created_at": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"effective_role": {"const": "tester"}}},
+      "then": {
+        "properties": {
+          "action_kind": {"enum": ["tester.casegen", "tester.case-repair"]},
+          "input_case_sha256": {"type": "null"},
+          "endpoint": {"type": "null"},
+          "release": {"type": "null"},
+          "request": {"properties": {"logical_request_id": {"type": "null"}}}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"effective_role": {"const": "solver"}}},
+      "then": {
+        "properties": {
+          "action_kind": {"enum": ["solver.iterate", "solver.repair"]},
+          "input_case_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "endpoint": {"type": "object"},
+          "release": {"type": "object"},
+          "request": {"properties": {"logical_request_id": {"type": "string", "minLength": 1}}}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "relative_path": {
+      "type": "string", "minLength": 1,
+      "pattern": "^(?![A-Za-z]:)(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    }
+  }
+}

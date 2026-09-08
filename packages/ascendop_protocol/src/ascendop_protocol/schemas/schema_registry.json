@@ -1,6 +1,6 @@
 {
   "schema": "ascendop.protocol-schema-registry.v1",
-  "protocol_release": "5.4.3",
+  "protocol_release": "5.5.0a1",
   "entries": [
     {"schema_id": "ascendop.flow.request.v3", "path": "flow_request.v3.schema.json", "compatibility": "exact"},
     {"schema_id": "ascendop.protocol-variable-registry.v3", "path": "protocol_variable_registry.v3.schema.json", "compatibility": "exact"},
@@ -33,6 +33,11 @@
     {"schema_id": "ascendop.agent-action-outcome.v1", "path": "agent_action_outcome.v1.schema.json", "compatibility": "exact"},
     {"schema_id": "ascendop.agent-action-context.v2", "path": "agent_action_context.v2.schema.json", "compatibility": "exact"},
     {"schema_id": "ascendop.agent-action-context.v3", "path": "agent_action_context.v3.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.standalone-agent-action-context.v1", "path": "standalone_agent_action_context.v1.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.standalone-agent-action-context.v2", "path": "standalone_agent_action_context.v2.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.standalone-agent-action-context.v3", "path": "standalone_agent_action_context.v3.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.standalone-agent-action-context.v4", "path": "standalone_agent_action_context.v4.schema.json", "compatibility": "exact"},
+    {"schema_id": "ascendop.standalone-agent-action-context.v5", "path": "standalone_agent_action_context.v5.schema.json", "compatibility": "exact"},
     {"schema_id": "ascendop.agent-registration.v1", "path": "agent_registration.v1.schema.json", "compatibility": "exact"},
     {"schema_id": "ascendop.agent-pool.v1", "path": "agent_pool.v1.schema.json", "compatibility": "exact"},
     {"schema_id": "ascendop.agent-action.v1", "path": "agent_action.v1.schema.json", "compatibility": "exact"},

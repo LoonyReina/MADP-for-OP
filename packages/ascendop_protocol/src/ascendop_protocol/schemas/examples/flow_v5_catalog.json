@@ -1,8 +1,8 @@
 {
   "schema": "ascendop.flow-v5-catalog.v1",
-  "generation": "flow-v5-catalog-v4",
-  "evidence_operation_registry_generation": "flow-v5-evidence-operations-v1",
-  "evidence_operation_registry_digest": "4e757a33a1c2184a3f9ad7434203189e510ce7ab4fccfedf2b9e6496e2672c62",
+  "generation": "flow-v5-catalog-v5",
+  "evidence_operation_registry_generation": "flow-v5-evidence-operations-v3",
+  "evidence_operation_registry_digest": "877360f6c7a9c56491ff71a58232d3579f7dee5994ec7ab4a7d5e3631165d6a1",
   "roles": ["assistant", "developer", "manager", "solver", "tester"],
   "action_catalog": [
     {"action_kind": "solver.iterate", "role": "solver", "required_capability": "operator-source-write"},
@@ -59,7 +59,9 @@
     "uncertain_delivery"
   ],
   "output_kinds": [
+    "case-bundle",
     "source-change",
+    "standalone-test-result",
     "pending-evidence-repair",
     "solver-blocker",
     "solver-candidate-proposal",

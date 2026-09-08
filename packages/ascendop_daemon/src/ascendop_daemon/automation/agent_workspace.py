@@ -134,20 +134,21 @@ class AgentWorkspace:
             if workspace.exists():
                 if not workspace.is_dir() or workspace.is_symlink():
                     raise AgentWorkspaceError("unpublished Agent workspace is unsafe")
-                shutil.rmtree(workspace)
+                shutil.rmtree(filesystem_path(workspace))
             staging = Path(tempfile.mkdtemp(prefix=".workspace-", dir=run_root))
             try:
                 shutil.copytree(
-                    origin,
-                    staging,
+                    filesystem_path(origin),
+                    filesystem_path(staging),
                     ignore=_ignore,
                     symlinks=False,
                     dirs_exist_ok=True,
                 )
-                os.replace(staging, workspace)
+                os.replace(filesystem_path(staging), filesystem_path(workspace))
             finally:
-                if staging.exists():
-                    shutil.rmtree(staging)
+                staging_io = filesystem_path(staging)
+                if staging_io.exists():
+                    shutil.rmtree(staging_io)
         evidence_manifest = self._stage_evidence(workspace, evidence or [])
         before = self.snapshot(workspace)
         expected = str(
@@ -607,8 +608,9 @@ class AgentWorkspace:
 
     def digest(self, workspace: Path) -> str:
         digest = hashlib.sha256()
+        workspace_io = filesystem_path(workspace)
         for path in self._files(workspace):
-            relative = path.relative_to(workspace).as_posix().encode("utf-8")
+            relative = path.relative_to(workspace_io).as_posix().encode("utf-8")
             payload = path.read_bytes()
             digest.update(len(relative).to_bytes(8, "big"))
             digest.update(relative)
@@ -617,8 +619,9 @@ class AgentWorkspace:
         return digest.hexdigest()
 
     def snapshot(self, workspace: Path) -> dict[str, str]:
+        workspace_io = filesystem_path(workspace)
         return {
-            path.relative_to(workspace).as_posix(): hashlib.sha256(
+            path.relative_to(workspace_io).as_posix(): hashlib.sha256(
                 path.read_bytes()
             ).hexdigest()
             for path in self._files(workspace)
@@ -637,7 +640,7 @@ class AgentWorkspace:
         return [path for path in paths if not _path_allowed(path, scopes)]
 
     def _files(self, workspace: Path) -> list[Path]:
-        workspace = workspace.resolve()
+        workspace = filesystem_path(workspace)
         result: list[Path] = []
         for path in sorted(workspace.rglob("*"), key=lambda item: item.as_posix()):
             if any(part in IGNORED_NAMES for part in path.relative_to(workspace).parts):

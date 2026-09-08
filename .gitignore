@@ -9,6 +9,7 @@ api*.txt
 *.tar.gz
 *secret*
 *credential*
+!packages/ascendop_daemon/src/ascendop_daemon/runtime/control_api_credentials.py
 
 /.ascendop-work/
 /.partner_state/

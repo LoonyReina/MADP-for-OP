@@ -12,7 +12,9 @@
     "output_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
     "output_kind": {
       "enum": [
+        "case-bundle",
         "pending-evidence-repair",
+        "standalone-test-result",
         "solver-blocker",
         "solver-candidate-proposal",
         "solver-diagnostic-request"

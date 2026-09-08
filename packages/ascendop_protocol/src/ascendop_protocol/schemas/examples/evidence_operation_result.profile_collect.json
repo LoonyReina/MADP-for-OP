@@ -2,8 +2,8 @@
   "schema": "ascendop.evidence-operation-result.v1",
   "operation_result_id": "eors-demo-profile-1",
   "operation_request_id": "eor-demo-profile-1",
-  "registry_generation": "flow-v5-evidence-operations-v1",
-  "registry_digest": "4e757a33a1c2184a3f9ad7434203189e510ce7ab4fccfedf2b9e6496e2672c62",
+  "registry_generation": "flow-v5-evidence-operations-v3",
+  "registry_digest": "877360f6c7a9c56491ff71a58232d3579f7dee5994ec7ab4a7d5e3631165d6a1",
   "operation_code": "profile.collect",
   "origin": {
     "action_id": "actor-action-demo-1",

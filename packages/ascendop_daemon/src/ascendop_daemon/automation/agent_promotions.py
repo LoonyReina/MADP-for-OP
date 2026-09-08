@@ -29,6 +29,24 @@ class AgentPromotionQueue:
         self.code_generation = code_generation
 
     def enqueue_source(
+        self, action: Mapping[str, Any], seal: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        return self.database.create_workflow_action(self.plan_source(action, seal))
+
+    def enqueue_case(
+        self, action: Mapping[str, Any], seal: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        return self.database.create_workflow_action(self.plan_case(action, seal))
+
+    def enqueue_output(
+        self, action: Mapping[str, Any], seal: Mapping[str, Any], *,
+        source_seal: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return self.database.create_workflow_action(
+            self.plan_output(action, seal, source_seal=source_seal)
+        )
+
+    def plan_source(
         self,
         action: Mapping[str, Any],
         seal: Mapping[str, Any],
@@ -38,7 +56,7 @@ class AgentPromotionQueue:
         idempotency_key = (
             f"agent-source-promotion:{action['action_id']}:{seal['source_after_digest']}"
         )
-        return self._publish(
+        return self._plan(
             action,
             action_id=_action_id("wfa-asp", idempotency_key),
             idempotency_key=idempotency_key,
@@ -56,7 +74,7 @@ class AgentPromotionQueue:
             priority=1000,
         )
 
-    def enqueue_case(
+    def plan_case(
         self,
         action: Mapping[str, Any],
         seal: Mapping[str, Any],
@@ -70,7 +88,7 @@ class AgentPromotionQueue:
             f"{action['candidate_version']}:{seal['source_after_digest']}:"
             f"{CASE_MATERIALIZER_GENERATION}"
         )
-        return self._publish(
+        return self._plan(
             action,
             action_id=_action_id("wfa-acp", idempotency_key),
             idempotency_key=idempotency_key,
@@ -90,7 +108,7 @@ class AgentPromotionQueue:
             priority=1002,
         )
 
-    def enqueue_output(
+    def plan_output(
         self,
         action: Mapping[str, Any],
         seal: Mapping[str, Any],
@@ -116,7 +134,7 @@ class AgentPromotionQueue:
         artifacts = [{"path": seal_path, "sha256": seal_digest}]
         if source_seal is not None:
             artifacts.insert(0, {"path": source_path, "sha256": source_digest})
-        return self._publish(
+        return self._plan(
             action,
             action_id=_action_id("wfa-aop", idempotency_key),
             idempotency_key=idempotency_key,
@@ -141,7 +159,7 @@ class AgentPromotionQueue:
             artifacts=artifacts,
         )
 
-    def _publish(
+    def _plan(
         self,
         action: Mapping[str, Any],
         *,
@@ -198,7 +216,7 @@ class AgentPromotionQueue:
                 "created_at": _utc_now(),
             }
         )
-        return self.database.create_workflow_action(workflow_action)
+        return workflow_action
 
 
 def _action_id(prefix: str, idempotency_key: str) -> str:

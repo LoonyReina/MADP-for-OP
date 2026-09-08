@@ -20,6 +20,7 @@ ALLOWED_TOP_LEVEL = {
     "packages",
     "publication",
     "pytest.ini",
+    "requirements-test.txt",
     "release",
     "scripts",
     "tests",

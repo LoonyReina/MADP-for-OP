@@ -15,6 +15,7 @@ from ascendop_daemon.runtime.workflow_adapter import (
     resolve_workflow_adapter,
 )
 from ascendop_daemon.runtime.process_adapter import workspace_process_environment
+from ascendop_daemon.core.models import legacy_board_operators
 
 
 class StateReader:
@@ -25,7 +26,10 @@ class StateReader:
     def read(self) -> BoardSnapshot:
         rows: list[BoardRow] = []
         outputs: list[str] = []
-        seasons = config_seasons(self.config)
+        # The workspace projector/standalone completion lane owns V5 correctness.
+        # Do not load/hash the legacy adapter or inspect its queues for these ops.
+        board_ops = legacy_board_operators(self.config, include_draining=True)
+        seasons = tuple(dict.fromkeys(operator_season(self.config, op) for op in board_ops))
         if len(seasons) <= 1:
             season_results = [self._read_season_board(season) for season in seasons]
         else:
@@ -47,9 +51,11 @@ class StateReader:
     def _read_season_board(self, season: str) -> tuple[str, list[BoardRow]]:
         season_ops = {
             op
-            for op in observed_operators(self.config)
+            for op in legacy_board_operators(self.config, include_draining=True)
             if operator_season(self.config, op) == season
         }
+        if not season_ops:
+            return "", []
         in_process = read_session_board_in_process(
             self.root,
             season=season,

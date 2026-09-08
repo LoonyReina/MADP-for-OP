@@ -4,10 +4,8 @@ import re
 from typing import Any, Mapping
 
 from .registry import (
-    EVIDENCE_OPERATION_CODES,
     evidence_operation_definition,
-    evidence_operation_registry,
-    evidence_operation_registry_digest,
+    evidence_operation_registry_for_identity,
 )
 
 
@@ -18,6 +16,36 @@ EVIDENCE_REQUEST_STATES = frozenset(
 )
 EVIDENCE_RESULT_STATUSES = frozenset({"completed", "failed", "cancelled"})
 FLOW_V5_ROLES = frozenset({"assistant", "developer", "manager", "solver", "tester"})
+EVIDENCE_OPERATION_REQUIRED_PARAMETERS = {
+    "test.correctness": ("candidate_id", "test_version", "case_version"),
+    "test.performance": (
+        "candidate_id",
+        "test_version",
+        "case_version",
+    ),
+    "profile.collect": (
+        "candidate_id",
+        "test_version",
+        "case_version",
+        "profiler_mode",
+    ),
+    "profile.compare": (
+        "baseline_evidence_ref",
+        "candidate_evidence_ref",
+        "comparison_rule",
+    ),
+    "correctness.replay": ("candidate_id", "test_version", "case_version"),
+    "environment.conformance": (
+        "endpoint_id",
+        "execution_environment_id",
+        "requirements_generation",
+    ),
+    "artifact.recover": (
+        "artifact_ref",
+        "expected_sha256",
+        "recovery_source",
+    ),
+}
 
 
 class EvidenceOperationContractError(ValueError):
@@ -39,15 +67,12 @@ def validate_evidence_operation_request(raw: Mapping[str, Any]) -> dict[str, Any
     ):
         _text(raw.get(field), field)
     _token(raw["operation_request_id"], "operation_request_id")
-    registry = evidence_operation_registry()
-    if raw["registry_generation"] != registry["generation"]:
-        raise EvidenceOperationContractError("evidence registry generation is stale")
-    if raw["registry_digest"] != evidence_operation_registry_digest():
-        raise EvidenceOperationContractError("evidence registry digest is stale")
+    registry = _registry_for_contract(raw)
     code = str(raw["operation_code"])
-    if code not in EVIDENCE_OPERATION_CODES:
+    codes = {row["operation_code"] for row in registry["operations"]}
+    if code not in codes:
         raise EvidenceOperationContractError(f"unsupported evidence operation: {code}")
-    definition = evidence_operation_definition(code)
+    definition = evidence_operation_definition(code, registry=registry)
     consumer = str(raw["expected_consumer"])
     if consumer not in definition["expected_consumers"]:
         raise EvidenceOperationContractError(
@@ -58,7 +83,9 @@ def validate_evidence_operation_request(raw: Mapping[str, Any]) -> dict[str, Any
             f"unsupported evidence request state: {raw['state']}"
         )
     _validate_origin(_object(raw.get("origin"), "origin"))
-    _validate_parameters(code, _object(raw.get("parameters"), "parameters"))
+    validate_evidence_operation_parameters(
+        code, _object(raw.get("parameters"), "parameters")
+    )
     return dict(raw)
 
 
@@ -78,15 +105,12 @@ def validate_evidence_operation_result(raw: Mapping[str, Any]) -> dict[str, Any]
         _text(raw.get(field), field)
     _token(raw["operation_result_id"], "operation_result_id")
     _token(raw["operation_request_id"], "operation_request_id")
-    registry = evidence_operation_registry()
-    if raw["registry_generation"] != registry["generation"]:
-        raise EvidenceOperationContractError("evidence registry generation is stale")
-    if raw["registry_digest"] != evidence_operation_registry_digest():
-        raise EvidenceOperationContractError("evidence registry digest is stale")
+    registry = _registry_for_contract(raw)
     code = str(raw["operation_code"])
-    if code not in EVIDENCE_OPERATION_CODES:
+    codes = {row["operation_code"] for row in registry["operations"]}
+    if code not in codes:
         raise EvidenceOperationContractError(f"unsupported evidence operation: {code}")
-    definition = evidence_operation_definition(code)
+    definition = evidence_operation_definition(code, registry=registry)
     consumer = str(raw["expected_consumer"])
     if consumer not in definition["expected_consumers"]:
         raise EvidenceOperationContractError(
@@ -127,6 +151,17 @@ def validate_evidence_operation_result(raw: Mapping[str, Any]) -> dict[str, Any]
     return dict(raw)
 
 
+def _registry_for_contract(raw: Mapping[str, Any]) -> dict[str, Any]:
+    try:
+        return evidence_operation_registry_for_identity(
+            str(raw["registry_generation"]), str(raw["registry_digest"])
+        )
+    except KeyError as exc:
+        raise EvidenceOperationContractError(
+            "evidence registry identity is not current or pinned history"
+        ) from exc
+
+
 def _validate_origin(origin: Mapping[str, Any]) -> None:
     for field in ("action_id", "iteration_id", "operator_id", "role"):
         _text(origin.get(field), f"origin.{field}")
@@ -134,38 +169,19 @@ def _validate_origin(origin: Mapping[str, Any]) -> None:
         raise EvidenceOperationContractError(f"unsupported origin role: {origin['role']}")
 
 
-def _validate_parameters(code: str, parameters: Mapping[str, Any]) -> None:
-    required = {
-        "test.correctness": ("candidate_id", "test_version", "case_version"),
-        "test.performance": (
-            "candidate_id",
-            "test_version",
-            "case_version",
-            "baseline_result_id",
-        ),
-        "profile.collect": (
-            "candidate_id",
-            "test_version",
-            "case_version",
-            "profiler_mode",
-        ),
-        "profile.compare": (
-            "baseline_evidence_ref",
-            "candidate_evidence_ref",
-            "comparison_rule",
-        ),
-        "correctness.replay": ("candidate_id", "test_version", "case_version"),
-        "environment.conformance": (
-            "endpoint_id",
-            "execution_environment_id",
-            "requirements_generation",
-        ),
-        "artifact.recover": (
-            "artifact_ref",
-            "expected_sha256",
-            "recovery_source",
-        ),
-    }[code]
+def evidence_operation_required_parameters(operation_code: str) -> tuple[str, ...]:
+    try:
+        return EVIDENCE_OPERATION_REQUIRED_PARAMETERS[operation_code]
+    except KeyError as exc:
+        raise EvidenceOperationContractError(
+            f"unsupported evidence operation: {operation_code}"
+        ) from exc
+
+
+def validate_evidence_operation_parameters(
+    code: str, parameters: Mapping[str, Any]
+) -> dict[str, Any]:
+    required = evidence_operation_required_parameters(code)
     for field in required:
         _text(parameters.get(field), f"parameters.{field}")
     if code == "correctness.replay":
@@ -177,6 +193,34 @@ def _validate_parameters(code: str, parameters: Mapping[str, Any]) -> None:
             raise EvidenceOperationContractError(
                 "parameters.failing_cases must be a non-empty scalar list"
             )
+    if code == "profile.collect":
+        kernel_name = parameters.get("profiler_kernel_name")
+        if kernel_name is not None:
+            _token(kernel_name, "parameters.profiler_kernel_name")
+        kernel_selection = parameters.get("profiler_kernel_selection")
+        if kernel_selection is not None and kernel_selection not in {
+            "exact",
+            "prefix-postfilter",
+        }:
+            raise EvidenceOperationContractError(
+                "parameters.profiler_kernel_selection must be exact or "
+                "prefix-postfilter"
+            )
+    if code == "test.performance":
+        baseline_result_id = parameters.get("baseline_result_id")
+        baseline_bootstrap = parameters.get("baseline_bootstrap")
+        if baseline_bootstrap is True:
+            if baseline_result_id not in {None, ""}:
+                raise EvidenceOperationContractError(
+                    "parameters.baseline_bootstrap and baseline_result_id are "
+                    "mutually exclusive"
+                )
+        elif baseline_bootstrap in {None, False}:
+            _text(baseline_result_id, "parameters.baseline_result_id")
+        else:
+            raise EvidenceOperationContractError(
+                "parameters.baseline_bootstrap must be a boolean"
+            )
     if code in {"profile.compare", "artifact.recover"}:
         for field in (
             ("baseline_evidence_ref", "candidate_evidence_ref")
@@ -186,6 +230,7 @@ def _validate_parameters(code: str, parameters: Mapping[str, Any]) -> None:
             _relative_path(parameters[field], f"parameters.{field}")
     if code == "artifact.recover":
         _sha256(parameters["expected_sha256"], "parameters.expected_sha256")
+    return dict(parameters)
 
 
 def _schema(raw: Mapping[str, Any], expected: str) -> None:
@@ -241,9 +286,12 @@ def _relative_path_list(value: Any, field: str) -> list[str]:
 __all__ = [
     "EVIDENCE_OPERATION_REQUEST_SCHEMA",
     "EVIDENCE_OPERATION_RESULT_SCHEMA",
+    "EVIDENCE_OPERATION_REQUIRED_PARAMETERS",
     "EVIDENCE_REQUEST_STATES",
     "EVIDENCE_RESULT_STATUSES",
     "EvidenceOperationContractError",
+    "evidence_operation_required_parameters",
     "validate_evidence_operation_request",
+    "validate_evidence_operation_parameters",
     "validate_evidence_operation_result",
 ]

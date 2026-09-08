@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from ascendop_daemon.core.models import BoardSnapshot, DaemonPlan, GateDecision, utc_now_iso
-from ascendop_daemon.observability.status_writer import serialize_decision, serialize_transport
+from ascendop_daemon.observability.audit_serialization import serialize_decision, serialize_transport
 
 
 class AuditLog:

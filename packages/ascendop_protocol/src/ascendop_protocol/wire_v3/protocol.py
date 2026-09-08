@@ -13,6 +13,8 @@ FLOW_SCHEMA = "ascendop.flow.request.v3"
 FLOW_VERSION = 3
 POSTPROCESS_RECOVERY_SCHEMA = "ascendop.flow.postprocess-recovery.v1"
 POSTPROCESS_RECOVERY_VERSION = 1
+CANCELLATION_SCHEMA = "ascendop.flow.cancellation.v1"
+CANCELLATION_VERSION = 1
 # GitPartner transports individual files below 1 MiB. Wire V3 has no aggregate
 # payload limit; it obtains that property by allowing an unbounded part count.
 PART_MAX_BYTES = 960 * 1024
@@ -25,6 +27,7 @@ EXTENSION_ID = re.compile(
 
 OPERATION_KINDS = {
     "operator-test",
+    "materialization-compile",
     "diagnostic-profile",
     "diagnostic-correctness-replay",
     "cache-prewarm",
@@ -104,6 +107,12 @@ class ValidatedPostprocessRecovery:
     digest: str
 
 
+@dataclass(frozen=True)
+class ValidatedCancellation:
+    request: dict[str, Any]
+    digest: str
+
+
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -123,6 +132,73 @@ def canonical_json(value: Any) -> str:
 
 def canonical_digest(value: Any) -> str:
     return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
+
+
+def validate_cancellation_request(
+    raw: Mapping[str, Any],
+) -> ValidatedCancellation:
+    """Validate one immutable request-scoped Wire V3 cancellation.
+
+    Cancellation names the already accepted immutable envelope and Engine job.
+    It cannot create a replacement attempt or target a transport request only.
+    """
+
+    if not isinstance(raw, Mapping):
+        raise FlowV3ProtocolError(
+            "invalid-cancellation",
+            "cancellation request must be an object",
+        )
+    required = {
+        "schema",
+        "version",
+        "cancellation_id",
+        "request_id",
+        "attempt_id",
+        "engine_job_id",
+        "endpoint_id",
+        "endpoint_generation",
+        "envelope_digest",
+        "requested_at",
+        "reason",
+    }
+    unknown = sorted(set(raw) - required)
+    missing = sorted(required - set(raw))
+    if missing or unknown:
+        detail = []
+        if missing:
+            detail.append("missing=" + ",".join(missing))
+        if unknown:
+            detail.append("unknown=" + ",".join(unknown))
+        raise FlowV3ProtocolError(
+            "invalid-cancellation-fields",
+            "cancellation fields are not exact: " + " ".join(detail),
+        )
+    request = copy.deepcopy(dict(raw))
+    require_exact(request, "schema", CANCELLATION_SCHEMA)
+    require_exact(request, "version", CANCELLATION_VERSION)
+    for field in (
+        "cancellation_id",
+        "request_id",
+        "attempt_id",
+        "engine_job_id",
+        "endpoint_id",
+        "endpoint_generation",
+    ):
+        token(request.get(field), field)
+    sha256(request.get("envelope_digest"), "envelope_digest")
+    timestamp(request.get("requested_at"), "requested_at")
+    reason = str(request.get("reason") or "").strip()
+    if not reason or len(reason) > 1000:
+        raise FlowV3ProtocolError(
+            "invalid-cancellation-reason",
+            "cancellation reason must contain 1..1000 characters",
+            field="reason",
+        )
+    request["reason"] = reason
+    return ValidatedCancellation(
+        request=request,
+        digest=canonical_digest(request),
+    )
 
 
 def validate_postprocess_recovery_request(
@@ -508,6 +584,43 @@ def validate_operation_contract(
                     f"{name} must depend on correctness",
                     field="execution.stages",
                 )
+    if operation_kind == "materialization-compile":
+        required = {"materialization-validate", "operator-build", "result-assemble"}
+        if not required.issubset(names):
+            raise FlowV3ProtocolError(
+                "missing-materialization-compile-stage",
+                "materialization-compile requires validation, build, and result stages",
+                field="execution.stages",
+            )
+        if execution["correctness_required"] or execution["publish_eligible"]:
+            raise FlowV3ProtocolError(
+                "invalid-materialization-compile-policy",
+                "materialization-compile is not correctness or publication evidence",
+                field="execution",
+            )
+        if execution["performance_mode"] != "none":
+            raise FlowV3ProtocolError(
+                "invalid-materialization-compile-profile",
+                "materialization-compile cannot run performance stages",
+                field="execution.performance_mode",
+            )
+        if any(
+            str(stage["resource_class"]) == "device"
+            or str(stage["name"])
+            in {"correctness", "runtime-install", "performance-primary"}
+            for stage in stages
+        ):
+            raise FlowV3ProtocolError(
+                "invalid-materialization-compile-stage",
+                "materialization-compile is host-only and cannot install runtime or run correctness",
+                field="execution.stages",
+            )
+        if int(retry_policy["max_execution_attempts"]) != 1:
+            raise FlowV3ProtocolError(
+                "materialization-compile-one-shot",
+                "materialization-compile permits one execution attempt",
+                field="retry_policy.max_execution_attempts",
+            )
     if operation_kind == "diagnostic-profile":
         if execution["performance_mode"] == "none":
             raise FlowV3ProtocolError(

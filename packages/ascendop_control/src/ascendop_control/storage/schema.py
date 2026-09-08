@@ -1,10 +1,41 @@
 from __future__ import annotations
 
 
-CONTROL_SCHEMA_VERSION = 14
+CONTROL_SCHEMA_VERSION = 17
 
 
 CONTROL_EXTENSION_SQL = """
+CREATE TABLE IF NOT EXISTS workspace_owners_v5 (
+    workspace_key TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL,
+    operator_id TEXT NOT NULL,
+    action_id TEXT NOT NULL UNIQUE,
+    revision INTEGER NOT NULL CHECK(revision > 0),
+    binding_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS control_outbox_v5 (
+    outbox_id TEXT PRIMARY KEY,
+    origin_id TEXT NOT NULL,
+    attempt_id TEXT NOT NULL,
+    topic TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    state TEXT NOT NULL CHECK(state IN ('pending', 'claimed', 'delivered')),
+    available_at TEXT NOT NULL,
+    claim_token TEXT NOT NULL DEFAULT '',
+    owner TEXT NOT NULL DEFAULT '',
+    lease_expires_at TEXT NOT NULL DEFAULT '',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    result_json TEXT NOT NULL DEFAULT '{}',
+    last_error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(origin_id, attempt_id, topic)
+);
+CREATE INDEX IF NOT EXISTS idx_control_outbox_v5_due
+    ON control_outbox_v5(topic, state, available_at, lease_expires_at);
+
 CREATE TABLE IF NOT EXISTS service_heartbeats (
     service_id TEXT PRIMARY KEY,
     role TEXT NOT NULL,
@@ -350,4 +381,24 @@ CREATE TABLE IF NOT EXISTS public_resource_projections_v4 (
     observed_at TEXT NOT NULL,
     PRIMARY KEY(resource_type, resource_id)
 );
+
+CREATE TABLE IF NOT EXISTS gp_terminal_ingest_events_v5 (
+    event_id TEXT PRIMARY KEY,
+    request_id TEXT NOT NULL,
+    attempt_id TEXT NOT NULL,
+    receipt_id TEXT NOT NULL,
+    terminal_revision INTEGER NOT NULL,
+    result_payload_sha256 TEXT NOT NULL,
+    envelope_digest TEXT NOT NULL,
+    event_json TEXT NOT NULL,
+    source_action_id TEXT NOT NULL DEFAULT '',
+    workspace_projection_ref TEXT NOT NULL DEFAULT '',
+    successor_action_id TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(request_id, attempt_id, receipt_id, terminal_revision)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gp_terminal_ingest_events_v5_request
+    ON gp_terminal_ingest_events_v5(request_id, attempt_id, created_at);
 """

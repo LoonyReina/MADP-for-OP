@@ -161,6 +161,21 @@ def render_v5_action_contract(context: Mapping[str, Any]) -> str:
         + ", ".join(validated["allowed_outcomes"])
         + "\nAvailable evidence operations: "
         + (", ".join(validated["available_evidence_operations"]) or "none")
+        + (
+            "\ntest.performance baseline parameters: use baseline_result_id for "
+            "comparison, or baseline_bootstrap=true only when the daemon authorizes "
+            "the first anchor-only measurement."
+            if "test.performance" in validated["available_evidence_operations"]
+            else ""
+        )
+        + (
+            "\nprofile.collect selector parameters: optionally set "
+            "profiler_kernel_name to a safe runtime kernel-family token and "
+            "profiler_kernel_selection to exact or prefix-postfilter. Use "
+            "prefix-postfilter when the runtime adds generated suffixes."
+            if "profile.collect" in validated["available_evidence_operations"]
+            else ""
+        )
         + "\nWrite scope: "
         + (", ".join(validated["write_scope"]) or "none")
         + "\nCausation: "

@@ -24,6 +24,8 @@ SOLVER_CANDIDATE_PROPOSAL_SCHEMA = "ascendop.solver-candidate-proposal.v1"
 SOLVER_CANDIDATE_PROMOTION_RECEIPT_SCHEMA = (
     "ascendop.solver-candidate-promotion-receipt.v1"
 )
+WORKSPACE_ITERATION_SCHEMA = "ascendop.workspace-iteration.v1"
+WORKSPACE_ITERATION_V2_SCHEMA = "ascendop.workspace-iteration.v2"
 
 AGENT_DRIVERS = {
     "codex-ide-task",
@@ -47,6 +49,17 @@ AGENT_OUTPUT_KINDS = {
     "solver-blocker",
     "solver-candidate-proposal",
     "solver-diagnostic-request",
+}
+WORKSPACE_ITERATION_NEXT_ACTIONS = {
+    "author_candidate",
+    "run_server",
+    "retry_server",
+    "triage_server",
+    "submit_official",
+    "retry_official",
+    "triage_official",
+    "wait",
+    "complete",
 }
 class AgentContractError(ValueError):
     pass
@@ -251,6 +264,232 @@ def validate_solver_candidate_proposal(raw: Mapping[str, Any]) -> dict[str, Any]
     return dict(raw)
 
 
+def validate_workspace_iteration(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate the single current cross-Agent handoff in an operator workspace."""
+
+    if raw.get("schema") == WORKSPACE_ITERATION_V2_SCHEMA:
+        return _validate_workspace_iteration_v2(raw)
+
+    expected = {
+        "schema",
+        "operator",
+        "revision",
+        "candidate",
+        "server_feedback",
+        "official_feedback",
+        "next",
+    }
+    missing = sorted(expected - set(raw))
+    unknown = sorted(set(raw) - expected)
+    if missing or unknown:
+        raise AgentContractError(
+            "workspace iteration fields do not match schema: "
+            f"missing={missing}, unknown={unknown}"
+        )
+    _schema(raw, WORKSPACE_ITERATION_SCHEMA)
+    _text(raw.get("operator"), "operator")
+    revision = raw.get("revision")
+    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 0:
+        raise AgentContractError("revision must be a non-negative integer")
+
+    candidate = raw.get("candidate")
+    if candidate is not None:
+        _validate_workspace_candidate(_object(candidate, "candidate"))
+    server = raw.get("server_feedback")
+    if server is not None:
+        _validate_workspace_server_feedback(_object(server, "server_feedback"))
+    official = raw.get("official_feedback")
+    if official is not None:
+        _validate_workspace_official_feedback(
+            _object(official, "official_feedback")
+        )
+
+    next_action = _object(raw.get("next"), "next")
+    if set(next_action) != {"owner", "action", "reason"}:
+        raise AgentContractError("next must contain owner, action, and reason")
+    owner = _text(next_action.get("owner"), "next.owner")
+    if owner not in {"solver", "harness", "assistant", "none"}:
+        raise AgentContractError(f"unsupported next owner: {owner}")
+    action = _text(next_action.get("action"), "next.action")
+    if action not in WORKSPACE_ITERATION_NEXT_ACTIONS:
+        raise AgentContractError(f"unsupported next action: {action}")
+    _text(next_action.get("reason"), "next.reason")
+    return dict(raw)
+
+
+def _validate_workspace_iteration_v2(raw: Mapping[str, Any]) -> dict[str, Any]:
+    expected = {"schema", "operator", "campaign_id", "workspace", "revision", "owner", "mode",
+                "candidate", "server_feedback", "official_feedback", "next", "recent_results", "updated_at"}
+    if set(raw) != expected:
+        raise AgentContractError("workspace iteration v2 fields do not match schema")
+    if type(raw["revision"]) is not int or raw["revision"] < 1:
+        raise AgentContractError("workspace projection revision must be positive")
+    for field in ("operator", "campaign_id", "workspace", "mode", "updated_at"):
+        _text(raw[field], field)
+    owner = _object(raw["owner"], "owner")
+    for field in ("action_id", "attempt_id", "lease_id", "principal_id", "native_session_id"):
+        _text(owner.get(field), f"owner.{field}")
+    if type(owner.get("revision")) is not int or owner["revision"] < 1:
+        raise AgentContractError("workspace owner revision must be positive")
+    if (owner.get("workspace") != raw["workspace"] or owner.get("campaign_id") != raw["campaign_id"]
+            or owner.get("operator_id") != raw["operator"]):
+        raise AgentContractError("workspace projection owner scope mismatch")
+    candidate = _object(raw["candidate"], "candidate")
+    if candidate.get("action_id") != owner["action_id"]:
+        raise AgentContractError("workspace candidate owner mismatch")
+    local = _object(raw["server_feedback"], "server_feedback")
+    official = _object(raw["official_feedback"], "official_feedback")
+    for feedback in (local, official):
+        _text(feedback.get("state"), "feedback.state")
+        _text(feedback.get("summary"), "feedback.summary")
+        if feedback.get("action_id") not in (None, owner["action_id"]):
+            raise AgentContractError("historical feedback cannot be projected as current")
+    if local.get("event_id") and local.get("request_id") != candidate.get("candidate_id"):
+        raise AgentContractError("workspace local request differs from candidate")
+    if official.get("event_id") and (official.get("request_id") != local.get("request_id")
+            or official.get("local_event_id") != local.get("event_id")):
+        raise AgentContractError("workspace official/local event mismatch")
+    next_action = _object(raw["next"], "next")
+    if set(next_action) != {"owner", "action", "reason"}:
+        raise AgentContractError("workspace next fields do not match schema")
+    if next_action["owner"] not in {"solver", "harness", "none"}:
+        raise AgentContractError("unsupported workspace next owner")
+    _text(next_action["reason"], "next.reason")
+    if next_action["action"] not in {"work", "await_local", "await_official", "await_continuation", "adapter_recovery_required", "qualification_gap", "correctness_complete"}:
+        raise AgentContractError("unsupported workspace next action")
+    if next_action["action"] == "correctness_complete" and not (
+            local.get("full_correctness_pass") is True and official.get("state") == "passed"
+            and local.get("event_id") and official.get("event_id")):
+        raise AgentContractError("correctness completion requires exact qualified local and official evidence")
+    if not isinstance(raw["recent_results"], list):
+        raise AgentContractError("recent_results must be an array")
+    return dict(raw)
+
+
+def _validate_workspace_candidate(candidate: Mapping[str, Any]) -> None:
+    expected = {
+        "candidate_id",
+        "state",
+        "authored_by",
+        "intent",
+        "observed_signal",
+        "primary_hypothesis",
+        "counter_hypothesis",
+        "changed_files",
+        "reference_decisions",
+        "expected_impact",
+        "risks",
+        "requested_server_cases",
+        "updated_at",
+    }
+    if set(candidate) != expected:
+        raise AgentContractError("candidate fields do not match workspace schema")
+    _token(candidate.get("candidate_id"), "candidate.candidate_id")
+    state = _text(candidate.get("state"), "candidate.state")
+    if state not in {"draft", "ready"}:
+        raise AgentContractError(f"unsupported candidate state: {state}")
+    for field in (
+        "authored_by",
+        "intent",
+        "observed_signal",
+        "primary_hypothesis",
+        "counter_hypothesis",
+        "expected_impact",
+        "updated_at",
+    ):
+        _text(candidate.get(field), f"candidate.{field}")
+    changed = _string_list(candidate.get("changed_files"), "candidate.changed_files")
+    if state == "ready" and not changed:
+        raise AgentContractError("ready candidate must list changed_files")
+    requested = _string_list(
+        candidate.get("requested_server_cases"),
+        "candidate.requested_server_cases",
+    )
+    if state == "ready" and not requested:
+        raise AgentContractError("ready candidate must request server cases")
+    decisions = candidate.get("reference_decisions")
+    if not isinstance(decisions, list):
+        raise AgentContractError("candidate.reference_decisions must be a list")
+    for index, decision in enumerate(decisions):
+        value = _object(decision, f"candidate.reference_decisions[{index}]")
+        if set(value) != {"path", "decision", "reason"}:
+            raise AgentContractError("reference decision fields are invalid")
+        _relative_path(value.get("path"), f"reference_decisions[{index}].path")
+        disposition = _text(
+            value.get("decision"), f"reference_decisions[{index}].decision"
+        )
+        if disposition not in {"consulted", "skipped"}:
+            raise AgentContractError("reference decision must be consulted or skipped")
+        _text(value.get("reason"), f"reference_decisions[{index}].reason")
+    if state == "ready" and not decisions:
+        raise AgentContractError("ready candidate must record reference decisions")
+    risks = _object(candidate.get("risks"), "candidate.risks")
+    if set(risks) != {"correctness", "performance", "infrastructure"}:
+        raise AgentContractError("candidate.risks fields are invalid")
+    for field in risks:
+        _text(risks.get(field), f"candidate.risks.{field}")
+
+
+def _validate_workspace_server_feedback(feedback: Mapping[str, Any]) -> None:
+    expected = {
+        "candidate_id",
+        "state",
+        "request_id",
+        "source_sha256",
+        "result_paths",
+        "summary",
+        "failed_cases",
+        "updated_at",
+    }
+    if set(feedback) != expected:
+        raise AgentContractError("server_feedback fields do not match workspace schema")
+    _token(feedback.get("candidate_id"), "server_feedback.candidate_id")
+    state = _text(feedback.get("state"), "server_feedback.state")
+    if state not in {"queued", "running", "passed", "failed", "infra_failed"}:
+        raise AgentContractError(f"unsupported server feedback state: {state}")
+    _text(feedback.get("request_id"), "server_feedback.request_id")
+    _sha256(feedback.get("source_sha256"), "server_feedback.source_sha256")
+    paths = _string_list(
+        feedback.get("result_paths"),
+        "server_feedback.result_paths",
+        relative_paths=True,
+    )
+    if state in {"passed", "failed", "infra_failed"} and not paths:
+        raise AgentContractError("terminal server feedback must name result_paths")
+    _text(feedback.get("summary"), "server_feedback.summary")
+    _string_list(feedback.get("failed_cases"), "server_feedback.failed_cases")
+    _text(feedback.get("updated_at"), "server_feedback.updated_at")
+
+
+def _validate_workspace_official_feedback(feedback: Mapping[str, Any]) -> None:
+    expected = {
+        "candidate_id",
+        "state",
+        "submission_id",
+        "source_sha256",
+        "result_path",
+        "summary",
+        "failure_points",
+        "updated_at",
+    }
+    if set(feedback) != expected:
+        raise AgentContractError("official_feedback fields do not match workspace schema")
+    _token(feedback.get("candidate_id"), "official_feedback.candidate_id")
+    state = _text(feedback.get("state"), "official_feedback.state")
+    if state not in {"queued", "submitted", "passed", "failed", "infra_failed"}:
+        raise AgentContractError(f"unsupported official feedback state: {state}")
+    _text(feedback.get("submission_id"), "official_feedback.submission_id")
+    _sha256(feedback.get("source_sha256"), "official_feedback.source_sha256")
+    result_path = str(feedback.get("result_path") or "")
+    if result_path:
+        _relative_path(result_path, "official_feedback.result_path")
+    if state in {"passed", "failed", "infra_failed"} and not result_path:
+        raise AgentContractError("terminal official feedback must name result_path")
+    _text(feedback.get("summary"), "official_feedback.summary")
+    _string_list(feedback.get("failure_points"), "official_feedback.failure_points")
+    _text(feedback.get("updated_at"), "official_feedback.updated_at")
+
+
 def validate_agent_action_receipt(raw: Mapping[str, Any]) -> dict[str, Any]:
     _schema(raw, AGENT_ACTION_RECEIPT_SCHEMA)
     for field in (
@@ -344,7 +583,11 @@ def validate_agent_context_snapshot(raw: Mapping[str, Any]) -> dict[str, Any]:
     return dict(raw)
 
 
-def validate_agent_turn_delivery(raw: Mapping[str, Any]) -> dict[str, Any]:
+def validate_agent_turn_delivery(
+    raw: Mapping[str, Any],
+    *,
+    require_current_catalog: bool = True,
+) -> dict[str, Any]:
     schema = str(raw.get("schema") or "")
     if schema not in {AGENT_TURN_DELIVERY_SCHEMA, AGENT_TURN_DELIVERY_V2_SCHEMA}:
         raise AgentContractError(
@@ -385,7 +628,8 @@ def validate_agent_turn_delivery(raw: Mapping[str, Any]) -> dict[str, Any]:
         from ascendop_protocol.actor import validate_agent_action_context_v3
 
         action_context = validate_agent_action_context_v3(
-            _object(raw.get("action_context"), "action_context")
+            _object(raw.get("action_context"), "action_context"),
+            require_current_catalog=require_current_catalog,
         )
         attempt = _object(action_context.get("attempt"), "action_context.attempt")
         expected_key = f"{action['action_id']}:{attempt['attempt_id']}"

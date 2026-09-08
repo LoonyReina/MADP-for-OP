@@ -402,6 +402,46 @@ def test_gate_head_change_cancels_pre_turn_retry_and_releases_lease(
     assert iteration == ("cancelled",)
 
 
+def test_scoped_gate_sync_preserves_other_head_and_original_running_lease(tmp_path):
+    store = _store(tmp_path)
+    store.register_agent(_registration("a", "codex-cli"), lease_seconds=60)
+    old = _action("outside-scope")
+    old["candidate_identity"]["origin"] = "workflow-gate"
+    store.create_agent_action(old, _snapshot("outside-scope"))
+    store.synchronize_workflow_agent_gate_heads([old], observed_at="before")
+    claim = store.claim_agent_action(runner_id="runner", boot_id="boot", lease_seconds=60)
+    store.start_agent_action(action_id=old["action_id"], lease_token=claim["lease"]["lease_token"],
+                            session_id="original-turn")
+    before = store.agent_action(old["action_id"])
+    assert store.synchronize_workflow_agent_gate_heads([], observed_at="after", operator_ids={"other"}) == []
+    assert store.agent_action(old["action_id"]) == before
+    assert store.workflow_agent_action_is_current(old["action_id"])
+    receipt = _receipt("outside-scope", claim)
+    receipt["completion"]["session_id"] = "original-turn"
+    terminal = store.complete_agent_action(receipt, lease_token=claim["lease"]["lease_token"])
+    assert terminal["state"] == "completed"
+    assert store.agent_action_receipt(old["action_id"])["status"] == "completed"
+
+
+def test_scoped_gate_sync_only_cancels_owned_queued_actions(tmp_path):
+    store = _store(tmp_path)
+    outside = _action("outside")
+    inside = _action("inside")
+    inside["operator_id"] = "other"
+    inside_snapshot = _snapshot("inside")
+    inside_snapshot["operator_id"] = "other"
+    for action, snapshot in ((outside, _snapshot("outside")), (inside, inside_snapshot)):
+        action["candidate_identity"]["origin"] = "workflow-gate"
+        store.create_agent_action(action, snapshot)
+    store.synchronize_workflow_agent_gate_heads([outside, inside], observed_at="before")
+    assert store.synchronize_workflow_agent_gate_heads([], observed_at="noop", operator_ids=set()) == []
+    assert store.synchronize_workflow_agent_gate_heads([], observed_at="after", operator_ids={"other"}) == [inside["action_id"]]
+    assert store.agent_action(outside["action_id"])["state"] == "queued"
+    assert store.workflow_agent_action_is_current(outside["action_id"])
+    with pytest.raises(ControlRepositoryError, match="outside synchronization scope"):
+        store.synchronize_workflow_agent_gate_heads([outside], observed_at="invalid", operator_ids={"other"})
+
+
 def test_gate_head_change_cancels_running_completion_and_fences_promotion(
     tmp_path: Path,
 ) -> None:

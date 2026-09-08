@@ -11,6 +11,7 @@ from .transaction import TransactionRepository
 from .transport import TransportRepository
 from .transport_returns import TransportReturnRepository
 from .workflow_actions import WorkflowActionRepository
+from .gp_terminal_ingest import GpTerminalIngestRepository
 
 __all__ = [
     "AutomationServiceRepository",
@@ -26,4 +27,5 @@ __all__ = [
     "TransportRepository",
     "TransportReturnRepository",
     "WorkflowActionRepository",
+    "GpTerminalIngestRepository",
 ]

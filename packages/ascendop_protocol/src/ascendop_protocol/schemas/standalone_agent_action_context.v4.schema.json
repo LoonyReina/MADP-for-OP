@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.standalone-agent-action-context.v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "context_id", "action_id", "action_kind", "effective_role",
+    "campaign_id", "operator_id", "native_session_id", "contract_revision",
+    "workspace", "case_path", "case_bundle", "run_root", "outcome_path",
+    "task_binding_sha256", "input_source_sha256", "input_case_sha256",
+    "predecessor_evidence", "reference_context", "case_lifecycle",
+    "endpoint", "release", "test", "request", "launcher", "harness",
+    "output_contracts", "created_at"
+  ],
+  "properties": {
+    "schema": {"const": "ascendop.standalone-agent-action-context.v4"},
+    "context_id": {"$ref": "#/$defs/token"},
+    "action_id": {"$ref": "#/$defs/token"},
+    "action_kind": {"enum": ["solver.iterate", "solver.repair", "tester.casegen", "tester.case-repair"]},
+    "effective_role": {"enum": ["solver", "tester"]},
+    "campaign_id": {"type": "string", "minLength": 1},
+    "operator_id": {"type": "string", "minLength": 1},
+    "native_session_id": {"type": "string", "minLength": 1},
+    "contract_revision": {"$ref": "#/$defs/sha256"},
+    "workspace": {"$ref": "#/$defs/relative_path"},
+    "case_path": {"$ref": "#/$defs/relative_path"},
+    "case_bundle": {"type": "object"},
+    "run_root": {"$ref": "#/$defs/relative_path"},
+    "outcome_path": {"$ref": "#/$defs/relative_path"},
+    "task_binding_sha256": {"$ref": "#/$defs/sha256"},
+    "input_source_sha256": {"$ref": "#/$defs/sha256"},
+    "input_case_sha256": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+    "predecessor_evidence": {"type": "array", "maxItems": 2, "items": {"type": "object"}},
+    "reference_context": {"oneOf": [{"type": "object"}, {"type": "null"}]},
+    "case_lifecycle": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["trigger", "active_case_version", "active_case_sha256"],
+          "properties": {
+            "trigger": {"enum": ["initial_case", "usage_exhausted", "new_official_feedback"]},
+            "active_case_version": {"type": "string", "minLength": 1},
+            "active_case_sha256": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]}
+          }
+        }
+      ]
+    },
+    "endpoint": {"oneOf": [{"type": "object"}, {"type": "null"}]},
+    "release": {"oneOf": [{"type": "object"}, {"type": "null"}]},
+    "performance_baseline": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "baseline_result_id", "round_credit"],
+          "properties": {
+            "mode": {"enum": ["bootstrap", "comparison"]},
+            "baseline_result_id": {
+              "oneOf": [
+                {"type": "string", "minLength": 1},
+                {"type": "null"}
+              ]
+            },
+            "round_credit": {
+              "enum": ["anchor-only", "comparison-eligible"]
+            },
+            "campaign_id": {"type": "string", "minLength": 1},
+            "case_sha256": {"$ref": "#/$defs/sha256"}
+          }
+        }
+      ]
+    },
+    "test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "operation_code", "test_version", "case_version", "case_range", "perf_case_range", "timeout_seconds"],
+      "properties": {
+        "mode": {"const": "both"},
+        "operation_code": {"const": "test.performance"},
+        "test_version": {"type": "string", "minLength": 1},
+        "case_version": {"type": "string", "minLength": 1},
+        "case_range": {"type": "string", "minLength": 1},
+        "perf_case_range": {"type": "string", "minLength": 1},
+        "timeout_seconds": {"type": "integer", "minimum": 1}
+      }
+    },
+    "request": {"type": "object"},
+    "launcher": {"type": "object"},
+    "harness": {"type": "object"},
+    "output_contracts": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "created_at": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"effective_role": {"const": "tester"}}},
+      "then": {
+        "properties": {
+          "action_kind": {"enum": ["tester.casegen", "tester.case-repair"]},
+          "input_case_sha256": {"type": "null"},
+          "reference_context": {"type": "null"},
+          "case_lifecycle": {"type": "object"},
+          "endpoint": {"type": "null"},
+          "release": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"effective_role": {"const": "solver"}}},
+      "then": {
+        "properties": {
+          "action_kind": {"enum": ["solver.iterate", "solver.repair"]},
+          "input_case_sha256": {"$ref": "#/$defs/sha256"},
+          "reference_context": {"type": "object"},
+          "case_lifecycle": {"type": "null"},
+          "endpoint": {"type": "object"},
+          "release": {"type": "object"}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "token": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "relative_path": {"type": "string", "minLength": 1, "pattern": "^(?![A-Za-z]:)(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"}
+  }
+}

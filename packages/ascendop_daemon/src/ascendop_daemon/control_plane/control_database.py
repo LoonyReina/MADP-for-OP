@@ -30,6 +30,7 @@ from ascendop_daemon.storage.repositories import (
     TransportRepository,
     TransportReturnRepository,
     WorkflowActionRepository,
+    GpTerminalIngestRepository,
 )
 
 
@@ -46,6 +47,7 @@ class ControlDatabase(
     NodeLifecycleRepository,
     TransactionRepository,
     WorkflowActionRepository,
+    GpTerminalIngestRepository,
     ManagementControlRepository,
     V4ControlRepository,
 ):

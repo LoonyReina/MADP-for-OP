@@ -209,10 +209,15 @@ class WorkflowActionRepository:
         *,
         producer_generation: str = "",
         lease_seconds: int = 60,
+        operators: set[str] | None = None,
     ) -> dict[str, Any] | None:
         worker_id = worker_id.strip()
         if not worker_id:
             raise ValueError("worker_id must not be empty")
+        if operators is not None and not operators:
+            return None
+        admitted = tuple(sorted(operators)) if operators is not None else ()
+        operator_filter = (" AND operator_id IN (" + ",".join("?" for _ in admitted) + ")") if operators is not None else ""
         now = utc_now()
         expires = (
             datetime.now(timezone.utc) + timedelta(seconds=max(1, lease_seconds))
@@ -227,27 +232,28 @@ class WorkflowActionRepository:
                 return None
             if producer_generation:
                 row = conn.execute(
-                    """
+                    f"""
                     SELECT action_id, action_json FROM workflow_actions
                     WHERE state='queued' AND (
                         producer_generation=? OR action_kind IN (
                             'promote-agent-source', 'promote-agent-case',
                             'promote-agent-output'
                         )
-                    )
+                    ){operator_filter}
                     ORDER BY priority DESC, created_at, action_id
                     LIMIT 1
                     """,
-                    (producer_generation,),
+                    (producer_generation, *admitted),
                 ).fetchone()
             else:
                 row = conn.execute(
-                    """
+                    f"""
                     SELECT action_id, action_json FROM workflow_actions
-                    WHERE state='queued'
+                    WHERE state='queued'{operator_filter}
                     ORDER BY priority DESC, created_at, action_id
                     LIMIT 1
-                    """
+                    """,
+                    admitted,
                 ).fetchone()
             if row is None:
                 return None
@@ -317,6 +323,7 @@ class WorkflowActionRepository:
         active_operators: set[str],
         current_action_ids: set[str],
         cancel_board_drift: bool,
+        preserve_operators: set[str] | None = None,
     ) -> list[dict[str, str]]:
         now = utc_now()
         cancelled: list[dict[str, str]] = []
@@ -332,6 +339,8 @@ class WorkflowActionRepository:
             for row in rows:
                 action_id = str(row[0])
                 operator_id = str(row[1])
+                if preserve_operators and operator_id in preserve_operators:
+                    continue  # Registered lane migration requires original-identity adoption.
                 action_generation = str(row[2])
                 action_payload = json.loads(str(row[3]))
                 candidate_identity = action_payload.get("candidate_identity", {})

@@ -97,7 +97,7 @@
       "type": "array",
       "minItems": 4,
       "uniqueItems": true,
-      "items": {"enum": ["source-change", "pending-evidence-repair", "solver-blocker", "solver-candidate-proposal", "solver-diagnostic-request"]}
+      "items": {"enum": ["case-bundle", "source-change", "standalone-test-result", "pending-evidence-repair", "solver-blocker", "solver-candidate-proposal", "solver-diagnostic-request"]}
     }
   }
 }

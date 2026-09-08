@@ -1,6 +1,6 @@
 {
   "schema": "ascendop.evidence-operation-registry.v1",
-  "generation": "flow-v5-evidence-operations-v1",
+  "generation": "flow-v5-evidence-operations-v3",
   "operations": [
     {
       "operation_code": "test.correctness",
@@ -25,7 +25,7 @@
       "resource_class": "device",
       "timeout_policy": {"timeout_seconds": 1800, "lease_seconds": 2100},
       "retry_policy": {"max_attempts": 2, "backoff_seconds": 30, "retryable_failure_classes": ["endpoint-unavailable", "transport"]},
-      "idempotency_policy": {"scope": "candidate-case", "key_fields": ["origin.operator_id", "parameters.test_version", "parameters.case_version", "parameters.baseline_result_id"]},
+      "idempotency_policy": {"scope": "candidate-case", "key_fields": ["origin.operator_id", "parameters.test_version", "parameters.case_version", "parameters.baseline_result_id", "parameters.baseline_bootstrap"]},
       "endpoint_requirements": {"required": true, "capabilities": ["operator-performance"]},
       "environment_requirements": {"required": true, "capabilities": ["cann-runtime", "device-runtime"]},
       "produced_evidence_types": ["performance-report"],
@@ -40,7 +40,7 @@
       "resource_class": "device",
       "timeout_policy": {"timeout_seconds": 1200, "lease_seconds": 1500},
       "retry_policy": {"max_attempts": 2, "backoff_seconds": 30, "retryable_failure_classes": ["endpoint-unavailable", "profiler-timeout", "transport"]},
-      "idempotency_policy": {"scope": "candidate-case", "key_fields": ["origin.operator_id", "parameters.test_version", "parameters.case_version", "parameters.profiler_mode"]},
+      "idempotency_policy": {"scope": "candidate-case", "key_fields": ["origin.operator_id", "parameters.test_version", "parameters.case_version", "parameters.profiler_mode", "parameters.profiler_kernel_name", "parameters.profiler_kernel_selection"]},
       "endpoint_requirements": {"required": true, "capabilities": ["msprof"]},
       "environment_requirements": {"required": true, "capabilities": ["cann-runtime", "profiler-runtime"]},
       "produced_evidence_types": ["profiler-trace"],

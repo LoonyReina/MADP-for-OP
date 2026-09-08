@@ -15,6 +15,8 @@ from .contracts import (
     ACTION_STATES,
     SOLVER_CANDIDATE_PROMOTION_RECEIPT_SCHEMA,
     SOLVER_CANDIDATE_PROPOSAL_SCHEMA,
+    WORKSPACE_ITERATION_SCHEMA,
+    WORKSPACE_ITERATION_V2_SCHEMA,
     AgentContractError,
     agent_turn_delivery_identity,
     validate_agent_action,
@@ -28,6 +30,7 @@ from .contracts import (
     validate_agent_turn_completion,
     validate_agent_work_lease,
     validate_solver_candidate_proposal,
+    validate_workspace_iteration,
 )
 from .authoring import (
     AGENT_OUTPUT_AUTHORING_REVISION,
@@ -52,6 +55,8 @@ __all__ = [
     "AGENT_OUTPUT_AUTHORING_REVISION",
     "SOLVER_CANDIDATE_PROMOTION_RECEIPT_SCHEMA",
     "SOLVER_CANDIDATE_PROPOSAL_SCHEMA",
+    "WORKSPACE_ITERATION_SCHEMA",
+    "WORKSPACE_ITERATION_V2_SCHEMA",
     "AgentContractError",
     "agent_turn_delivery_identity",
     "validate_agent_action",
@@ -65,5 +70,6 @@ __all__ = [
     "validate_agent_turn_completion",
     "validate_agent_work_lease",
     "validate_solver_candidate_proposal",
+    "validate_workspace_iteration",
     "render_agent_output_authoring_contract",
 ]

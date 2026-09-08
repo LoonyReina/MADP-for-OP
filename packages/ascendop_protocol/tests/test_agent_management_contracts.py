@@ -23,12 +23,13 @@ from ascendop_protocol.agent import (
     validate_agent_context_snapshot,
     validate_agent_output_contract,
     validate_solver_candidate_proposal,
+    validate_workspace_iteration,
     validate_agent_pool,
     validate_agent_registration,
     validate_agent_turn_delivery,
     validate_agent_turn_completion,
 )
-from ascendop_protocol.actor import build_v5_prompt_context
+from ascendop_protocol.actor import ActorContractError, build_v5_prompt_context
 from ascendop_protocol.management import (
     CONTROL_COMMAND_SCHEMA,
     ManagementContractError,
@@ -141,6 +142,23 @@ def test_agent_contracts_are_registered_and_validate() -> None:
         ),
     }
     assert validate_agent_turn_delivery(delivery_v2) == delivery_v2
+    historical_delivery = {
+        **delivery_v2,
+        "action_context": {
+            **delivery_v2["action_context"],
+            "catalog_generation": "historical-catalog",
+            "catalog_digest": "f" * 64,
+        },
+    }
+    with pytest.raises(ActorContractError, match="catalog generation is stale"):
+        validate_agent_turn_delivery(historical_delivery)
+    assert (
+        validate_agent_turn_delivery(
+            historical_delivery,
+            require_current_catalog=False,
+        )
+        == historical_delivery
+    )
     completion = {
         "schema": AGENT_TURN_COMPLETION_SCHEMA,
         "action_id": "act-1",
@@ -262,6 +280,51 @@ def test_solver_candidate_proposal_is_typed_and_evidence_bearing() -> None:
     proposal["consulted_evidence"] = []
     with pytest.raises(ValueError, match="must not be empty"):
         validate_solver_candidate_proposal(proposal)
+
+
+def test_workspace_iteration_is_the_single_typed_cross_agent_handoff() -> None:
+    iteration = {
+        "schema": "ascendop.workspace-iteration.v1",
+        "operator": "HardSwish",
+        "revision": 4,
+        "candidate": {
+            "candidate_id": "hardswish-20260825-a",
+            "state": "ready",
+            "authored_by": "solver",
+            "intent": "preserve correctness while reducing scalar setup",
+            "observed_signal": "server and official correctness already pass",
+            "primary_hypothesis": "one bounded setup reduction is safe",
+            "counter_hypothesis": "the setup is required by a hidden shape",
+            "changed_files": ["op_kernel/hard_swish.cpp"],
+            "reference_decisions": [
+                {
+                    "path": "reference/REFERENCE_GUIDE.md",
+                    "decision": "consulted",
+                    "reason": "checked task and prior implementation constraints",
+                }
+            ],
+            "expected_impact": "same correctness with less setup work",
+            "risks": {
+                "correctness": "hidden tail shape",
+                "performance": "neutral on large tensors",
+                "infrastructure": "none",
+            },
+            "requested_server_cases": ["all correctness cases"],
+            "updated_at": "2026-08-25T00:00:00+00:00",
+        },
+        "server_feedback": None,
+        "official_feedback": None,
+        "next": {
+            "owner": "harness",
+            "action": "run_server",
+            "reason": "The canonical workspace candidate is ready.",
+        },
+    }
+
+    assert validate_workspace_iteration(iteration) == iteration
+    iteration["candidate"]["reference_decisions"] = []
+    with pytest.raises(ValueError, match="must record reference decisions"):
+        validate_workspace_iteration(iteration)
 
 
 def test_agent_contract_rejects_unbounded_paths_and_unknown_driver() -> None:

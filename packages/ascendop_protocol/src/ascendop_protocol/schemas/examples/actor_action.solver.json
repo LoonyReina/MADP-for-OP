@@ -6,7 +6,7 @@
   "effective_role": "solver",
   "principal_id": "solver-principal-demo",
   "role_binding_id": "binding-solver-1",
-  "producer_generation": "flow-v5-catalog-v4",
+  "producer_generation": "flow-v5-catalog-v5",
   "scope": {
     "workspace_roots": ["operators_workspace/Demo"],
     "operator_ids": ["Demo"],

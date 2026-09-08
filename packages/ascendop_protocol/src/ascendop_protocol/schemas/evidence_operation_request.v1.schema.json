@@ -56,15 +56,32 @@
     "test_performance": {
       "allOf": [{"$ref": "#/$defs/candidate_case"}],
       "type": "object",
-      "required": ["baseline_result_id"],
-      "properties": {"baseline_result_id": {"type": "string", "minLength": 1}},
+      "properties": {
+        "baseline_result_id": {"type": "string", "minLength": 1},
+        "baseline_bootstrap": {"type": "boolean"}
+      },
+      "oneOf": [
+        {
+          "required": ["baseline_result_id"],
+          "not": {"properties": {"baseline_bootstrap": {"const": true}}}
+        },
+        {
+          "required": ["baseline_bootstrap"],
+          "properties": {"baseline_bootstrap": {"const": true}},
+          "not": {"required": ["baseline_result_id"]}
+        }
+      ],
       "additionalProperties": true
     },
     "profile_collect": {
       "allOf": [{"$ref": "#/$defs/candidate_case"}],
       "type": "object",
       "required": ["profiler_mode"],
-      "properties": {"profiler_mode": {"type": "string", "minLength": 1}},
+      "properties": {
+        "profiler_mode": {"type": "string", "minLength": 1},
+        "profiler_kernel_name": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+        "profiler_kernel_selection": {"enum": ["exact", "prefix-postfilter"]}
+      },
       "additionalProperties": true
     },
     "profile_compare": {

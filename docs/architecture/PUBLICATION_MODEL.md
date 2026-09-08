@@ -20,7 +20,7 @@ GP/Engine architecture documents, and provenance.
 
 1. Freeze and test a private AscendOP integration point.
 2. Run `sync_from_ascendop.py --check` to inspect core drift.
-3. Run `sync_from_ascendop.py --apply` to copy only manifest-listed trees.
+3. Run `sync_from_ascendop.py --apply` to update only explicitly selected files.
 4. Review the diff and update public docs/package versions.
 5. Run core tests, package builds, and `publication_scan.py`.
 6. Record source and release identities in provenance.
@@ -33,3 +33,13 @@ prevents the two implementations from silently diverging.
 
 Historical public tags are immutable. A new milestone appends a commit and tag;
 it does not rewrite earlier architecture history.
+
+Manifest v2 names every selected upstream file and every retained public
+compatibility file. Retained files are not refreshed implicitly; later milestones
+review their replacement separately. The only source facade mapping is the
+reviewed public typed-action completion entrypoint. The implementation behind it
+is shared with private intake. New upstream files are not automatically exported,
+and synchronization no longer deletes/replaces whole component directories.
+
+Sync comparison allows LF/CRLF normalization. Release provenance hashes the exact
+normalized public file bytes; transport payload validation is unchanged.

@@ -19,6 +19,7 @@ from ascendop_protocol.agent import (
     validate_agent_pool,
     validate_agent_registration,
 )
+from ascendop_protocol.actor import AGENT_ACTION_OUTCOME_SCHEMA, validate_agent_action_outcome
 from ascendop_protocol.evidence import (
     evidence_operation_definition,
     validate_evidence_operation_request,
@@ -27,6 +28,8 @@ from ascendop_protocol.evidence import (
 from .errors import ControlRepositoryError
 from .management_repository import ManagementRepository
 from .service_repository import ServiceRepository
+from .outbox_repository import ControlOutboxRepository, enqueue_control_intent
+from .workspace_repository import WorkspaceOwnerRepository, workspace_has_owner
 
 
 # Retry classification is a control-plane policy. It is intentionally kept out
@@ -533,6 +536,8 @@ class _AgentRepository:
                         "agent action idempotency collision with different payload"
                     )
                 return self._agent_action_in_connection(conn, str(existing["action_id"]))
+            if workspace_has_owner(conn, value):
+                raise ControlRepositoryError("managed workspace rejects the legacy formal action creator")
             try:
                 conn.execute(
                     "INSERT INTO agent_iterations_v4(iteration_id, operator_id, role, "
@@ -1101,16 +1106,217 @@ class _AgentRepository:
             )
         return {"action_id": action_id, "heartbeat_at": now, "expires_at": expires_at}
 
+    def ensure_agent_turn_completion_lease(
+        self,
+        *,
+        action_id: str,
+        attempt_id: str,
+        turn_id: str,
+        completion_digest: str,
+        verification: str,
+        runner_id: str,
+        lease_seconds: int = 30,
+    ) -> dict[str, Any]:
+        """Renew only the exact expired lease needed to ingest a terminal turn."""
+
+        if verification != "exact-terminal-turn-structured-result":
+            raise ControlRepositoryError(
+                "Agent completion lease recovery requires exact terminal-turn verification"
+            )
+        if not turn_id.strip():
+            raise ControlRepositoryError(
+                "Agent completion lease recovery requires turn_id"
+            )
+        if len(completion_digest) != 64 or any(
+            char not in "0123456789abcdef"
+            for char in completion_digest.lower()
+        ):
+            raise ControlRepositoryError(
+                "Agent completion lease recovery requires a SHA-256 completion digest"
+            )
+        now = _utc_now()
+        expires_at = _future(now, lease_seconds)
+        with self.transaction() as conn:
+            row = conn.execute(
+                "SELECT a.*, t.state AS attempt_state, t.session_id, "
+                "t.details_json, l.state AS lease_state, l.lease_json, "
+                "l.lease_id, l.lease_token, l.runner_id AS lease_runner_id, "
+                "l.expires_at AS lease_expires_at, i.state AS iteration_state, "
+                "i.iteration_json, r.status AS receipt_status "
+                "FROM agent_actions_v4 a JOIN agent_action_attempts_v4 t "
+                "ON t.attempt_id=a.current_attempt_id "
+                "JOIN agent_work_leases_v4 l ON l.lease_id=a.current_lease_id "
+                "JOIN agent_iterations_v4 i ON i.iteration_id=a.iteration_id "
+                "LEFT JOIN agent_action_receipts_v4 r ON r.action_id=a.action_id "
+                "WHERE a.action_id=?",
+                (action_id,),
+            ).fetchone()
+            if row is None:
+                raise ControlRepositoryError(
+                    "Agent completion lease recovery evidence is incomplete"
+                )
+            if str(row["current_attempt_id"]) != attempt_id:
+                raise ControlRepositoryError(
+                    "Agent completion lease recovery attempt identity changed"
+                )
+            if str(row["session_id"] or "") != turn_id:
+                raise ControlRepositoryError(
+                    "Agent completion lease recovery turn identity changed"
+                )
+            if str(row["lease_runner_id"] or "") != runner_id:
+                raise ControlRepositoryError(
+                    "Agent completion lease recovery runner identity changed"
+                )
+            if row["receipt_status"] is not None:
+                raise ControlRepositoryError(
+                    "Agent completion lease recovery found a terminal receipt"
+                )
+            if not self._workflow_agent_gate_is_current(conn, row):
+                raise ControlRepositoryError(
+                    "Agent completion lease recovery rejected: workflow gate is obsolete"
+                )
+            if (
+                str(row["state"]) not in {"running", "uncertain"}
+                or str(row["attempt_state"]) not in {"running", "uncertain"}
+                or str(row["iteration_state"]) not in {"running", "uncertain"}
+                or str(row["lease_state"]) not in {"active", "expired"}
+            ):
+                raise ControlRepositoryError(
+                    "Agent completion lease recovery lifecycle evidence is inconsistent"
+                )
+
+            lease = json.loads(str(row["lease_json"] or "{}"))
+            if (
+                str(row["lease_state"]) == "active"
+                and str(row["lease_expires_at"]) > now
+            ):
+                return {
+                    "recovered": False,
+                    "attempt_id": attempt_id,
+                    "lease": lease,
+                    "recovery": None,
+                }
+
+            conflict = conn.execute(
+                "SELECT action_id FROM agent_actions_v4 WHERE operator_id=? AND role=? "
+                "AND state IN ('claimed','running','uncertain') AND action_id<>? "
+                "LIMIT 1",
+                (row["operator_id"], row["role"], action_id),
+            ).fetchone()
+            if conflict is not None:
+                raise ControlRepositoryError(
+                    "another Agent action is active for this operator role"
+                )
+            recovery = {
+                "schema": "ascendop.agent-expired-completion-lease-recovery.v1",
+                "verification": verification,
+                "attempt_id": attempt_id,
+                "turn_id": turn_id,
+                "completion_digest": completion_digest.lower(),
+                "runner_id": runner_id,
+                "prior_lease_state": str(row["lease_state"]),
+                "prior_expires_at": str(row["lease_expires_at"]),
+                "recovered_at": now,
+            }
+            details = json.loads(str(row["details_json"] or "{}"))
+            details["expired_completion_lease_recovery"] = recovery
+            iteration = json.loads(str(row["iteration_json"] or "{}"))
+            iteration.update(
+                {
+                    "state": "running",
+                    "agent_id": str(row["assigned_agent_id"]),
+                    "updated_at": now,
+                }
+            )
+            lease.update(
+                {
+                    "state": "active",
+                    "heartbeat_at": now,
+                    "expires_at": expires_at,
+                }
+            )
+            conn.execute(
+                "UPDATE agent_actions_v4 SET state='running', claimed_by=?, "
+                "updated_at=? WHERE action_id=?",
+                (runner_id, now, action_id),
+            )
+            conn.execute(
+                "UPDATE agent_action_attempts_v4 SET state='running', runner_id=?, "
+                "completed_at='', heartbeat_at=?, details_json=?, updated_at=? "
+                "WHERE attempt_id=?",
+                (runner_id, now, _canonical_json(details), now, attempt_id),
+            )
+            conn.execute(
+                "UPDATE agent_iterations_v4 SET state='running', agent_id=?, "
+                "iteration_json=?, updated_at=? WHERE iteration_id=?",
+                (
+                    row["assigned_agent_id"],
+                    _canonical_json(iteration),
+                    now,
+                    row["iteration_id"],
+                ),
+            )
+            conn.execute(
+                "UPDATE agent_work_leases_v4 SET state='active', runner_id=?, "
+                "released_at='', heartbeat_at=?, expires_at=?, lease_json=? "
+                "WHERE lease_id=?",
+                (
+                    runner_id,
+                    now,
+                    expires_at,
+                    _canonical_json(lease),
+                    row["lease_id"],
+                ),
+            )
+            self._event(
+                conn,
+                "agent-action-expired-completion-lease-recovered",
+                "agent-action",
+                action_id,
+                recovery,
+            )
+            return {
+                "recovered": True,
+                "attempt_id": attempt_id,
+                "lease": lease,
+                "recovery": recovery,
+            }
+
     def complete_agent_action(
         self,
         receipt: Mapping[str, Any],
         *,
         lease_token: str,
+        continuation: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         value = validate_agent_action_receipt(receipt)
         now = _utc_now()
         action_id = str(value["action_id"])
         with self.transaction() as conn:
+            committed = conn.execute(
+                "SELECT receipt_json FROM agent_action_receipts_v4 WHERE action_id=?",
+                (action_id,),
+            ).fetchone()
+            if committed is not None:
+                owner = conn.execute(
+                    "SELECT * FROM agent_work_leases_v4 WHERE action_id=? AND lease_token=?",
+                    (action_id, lease_token),
+                ).fetchone()
+                if (owner is None or owner["lease_id"] != value["lease_id"]
+                        or owner["agent_id"] != value["agent_id"]
+                        or _canonical_json(value) != committed["receipt_json"]):
+                    raise ControlRepositoryError("conflicting Agent completion replay")
+                if continuation is not None:
+                    previous = conn.execute(
+                        "SELECT payload_json FROM control_outbox_v5 WHERE origin_id=? "
+                        "AND attempt_id=(SELECT current_attempt_id FROM agent_actions_v4 WHERE action_id=?) "
+                        "AND topic='agent.completion'",
+                        (action_id, action_id),
+                    ).fetchone()
+                    if (previous is None or _canonical_json(continuation) != _canonical_json(
+                            json.loads(previous["payload_json"])["continuation"])):
+                        raise ControlRepositoryError("conflicting completion continuation replay")
+                return self._agent_action_in_connection(conn, action_id)
             lease = self._require_active_lease(conn, action_id, lease_token, now)
             if str(value["lease_id"]) != str(lease["lease_id"]):
                 raise ControlRepositoryError("agent receipt lease mismatch")
@@ -1124,6 +1330,8 @@ class _AgentRepository:
                 raise ControlRepositoryError(
                     "agent action disappeared before completion"
                 )
+            if str(value["iteration_id"]) != str(action_row["iteration_id"]):
+                raise ControlRepositoryError("agent receipt iteration mismatch")
             reported_state = str(value["status"])
             obsolete_completion = (
                 reported_state == "completed"
@@ -1136,6 +1344,8 @@ class _AgentRepository:
                     "session_id": str(
                         reported_completion.get("session_id") or ""
                     ),
+                    "native_turn_id": str(reported_completion.get("native_turn_id") or ""),
+                    "native_semantic_sha256": str(reported_completion.get("native_semantic_sha256") or ""),
                     "target_id": str(reported_completion.get("target_id") or ""),
                     "adapter_id": str(reported_completion.get("adapter_id") or ""),
                     "runner_generation": str(
@@ -1152,6 +1362,17 @@ class _AgentRepository:
                     "reported_status": reported_state,
                     "reported_completion": reported_completion,
                 }
+                completion["agent_action_outcome"] = validate_agent_action_outcome({
+                    "schema": AGENT_ACTION_OUTCOME_SCHEMA,
+                    "action_id": action_id,
+                    "execution_status": "cancelled",
+                    "disposition": None,
+                    "failure_class": "cancelled",
+                    "summary": "Agent completion belongs to an obsolete workflow gate.",
+                    "outputs": [], "evidence_refs": [],
+                    "requested_operation": None, "blocker": None,
+                    "completed_at": value["completed_at"],
+                })
                 value = validate_agent_action_receipt(
                     {
                         **value,
@@ -1223,6 +1444,16 @@ class _AgentRepository:
                     "completed_at=excluded.completed_at",
                     (action_id, state, _canonical_json(value), value["completed_at"]),
                 )
+                if continuation is not None and state == "completed":
+                    enqueue_control_intent(
+                        conn, origin_id=action_id,
+                        attempt_id=str(action_row["current_attempt_id"]),
+                        topic="agent.completion", created_at=now,
+                        payload={
+                            "receipt": value,
+                            "continuation": dict(continuation),
+                        },
+                    )
             self._event(
                 conn,
                 (
@@ -1658,10 +1889,11 @@ class _AgentRepository:
         *,
         current_action_ids: set[str],
         now: str,
+        operator_ids: set[str] | None = None,
     ) -> list[str]:
         cancelled: list[str] = []
         rows = conn.execute(
-            "SELECT a.action_id, a.iteration_id, a.action_json, "
+            "SELECT a.action_id, a.operator_id, a.iteration_id, a.action_json, "
             "a.state AS action_state, a.current_attempt_id, "
             "a.current_lease_id, t.state AS attempt_state, t.details_json, "
             "l.state AS lease_state FROM agent_actions_v4 a "
@@ -1673,6 +1905,8 @@ class _AgentRepository:
             "ORDER BY a.created_at, a.action_id"
         ).fetchall()
         for row in rows:
+            if operator_ids is not None and str(row["operator_id"]) not in operator_ids:
+                continue
             action_id = str(row["action_id"])
             if action_id in current_action_ids:
                 continue
@@ -1744,7 +1978,9 @@ class _AgentRepository:
         actions: list[Mapping[str, Any]],
         *,
         observed_at: str,
+        operator_ids: set[str] | None = None,
     ) -> list[str]:
+        """Replace heads only in the observing controller's registered scope."""
         heads: dict[str, dict[str, str]] = {}
         current_action_ids: set[str] = set()
         for action in actions:
@@ -1753,15 +1989,24 @@ class _AgentRepository:
             role = str(action.get("role") or "")
             if not action_id or not operator_id or role not in {"solver", "tester"}:
                 raise ControlRepositoryError("invalid workflow Agent gate head")
+            if operator_ids is not None and operator_id not in operator_ids:
+                raise ControlRepositoryError("workflow Agent gate head is outside synchronization scope")
             heads.setdefault(operator_id, {})[role] = action_id
             current_action_ids.add(action_id)
+        if operator_ids is not None and not operator_ids:
+            return []
         now = _utc_now()
         cancelled: list[str] = []
         with self.transaction() as conn:
             previous = conn.execute(
-                "SELECT revision FROM scheduler_state WHERE scheduler_id=?",
+                "SELECT revision, state_json FROM scheduler_state WHERE scheduler_id=?",
                 ("agent-gate-heads-v4",),
             ).fetchone()
+            if previous is not None and operator_ids is not None:
+                prior_heads = json.loads(str(previous["state_json"])).get("heads", {})
+                for operator_id, roles in prior_heads.items():
+                    if operator_id not in operator_ids:
+                        heads[operator_id] = roles
             revision = int(previous["revision"] if previous is not None else 0) + 1
             state = {
                 "schema": "ascendop.agent-gate-heads.v1",
@@ -1785,6 +2030,7 @@ class _AgentRepository:
                 conn,
                 current_action_ids=current_action_ids,
                 now=now,
+                operator_ids=operator_ids,
             )
             self._event(
                 conn,
@@ -2294,6 +2540,8 @@ class _AgentRepository:
         action_row: sqlite3.Row,
     ) -> bool:
         action = json.loads(str(action_row["action_json"]))
+        if workspace_has_owner(conn, action):
+            return False
         identity = action.get("candidate_identity", {})
         if not isinstance(identity, Mapping) or identity.get("origin") != "workflow-gate":
             return True
@@ -3095,7 +3343,7 @@ class _AgentRepository:
         return str(row[0]) if row else _utc_now()
 
 
-class V4ControlRepository(_AgentRepository, ManagementRepository, ServiceRepository):
+class V4ControlRepository(_AgentRepository, ManagementRepository, ServiceRepository, ControlOutboxRepository, WorkspaceOwnerRepository):
     pass
 
 

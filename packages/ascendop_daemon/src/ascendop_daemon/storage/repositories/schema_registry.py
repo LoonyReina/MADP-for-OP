@@ -67,6 +67,17 @@ class SchemaRegistryRepository:
     def initialize(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connection() as conn:
+            metadata_exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='metadata'"
+            ).fetchone()
+            existing = (
+                conn.execute("SELECT value FROM metadata WHERE key='schema_version'").fetchone()
+                if metadata_exists else None
+            )
+            if existing is not None and int(existing[0]) > SCHEMA_VERSION:
+                raise ControlDatabaseError(
+                    f"unsupported control database schema: {existing[0]}"
+                )
             conn.executescript(CONTROL_SCHEMA_SQL)
             _ensure_column(
                 conn,
@@ -196,13 +207,6 @@ class SchemaRegistryRepository:
                 "transport_mode",
                 "TEXT NOT NULL DEFAULT ''",
             )
-            existing = conn.execute(
-                "SELECT value FROM metadata WHERE key = 'schema_version'"
-            ).fetchone()
-            if existing is not None and int(existing[0]) > SCHEMA_VERSION:
-                raise ControlDatabaseError(
-                    f"unsupported control database schema: {existing[0]}"
-                )
             if existing is not None and int(existing[0]) < 7:
                 migrate_transport_protocol_v3(conn, self._event)
             migrate_agent_output_contract_v1(conn, self._event)

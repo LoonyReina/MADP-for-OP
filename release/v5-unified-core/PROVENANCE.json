@@ -1,0 +1,55 @@
+{
+  "schema": "madp.publication-provenance.v2",
+  "milestone": "v5-unified-core",
+  "publication_status": "local-candidate-not-published",
+  "public_core_version": "5.5.0a1",
+  "public_tag": null,
+  "source_snapshot": {
+    "relationship": "Reviewed file-level extraction and shared-core refactoring; deployment-specific intake remains upstream.",
+    "manifest_schema": "madp.public-core-manifest.v2",
+    "compatibility": "Retained public modules are explicitly listed and not silently refreshed.",
+    "flow_v5_status": "partial-public-preview"
+  },
+  "allowlisted_component_digests": {
+    "agent-runner-source": "5a7334c14e5271160fe52c7b3aeb2648380828b1f2f85f98750ef49912dda262",
+    "agent-runner-tests": "9f89488133d6c6d3f3a8f70d78f864c48e63853944734f53c391d2b43f3c13c3",
+    "control-source": "0e38a6e18cd8015d3860f5afce58f68b923b6074ecd852e706139deaa6c0777b",
+    "control-tests": "d4e106c71f93e01ea8ffda8f67bf7fc62ae74cc3ee7822b30840633c45029a8b",
+    "daemon-automation": "c730bb3948460f0b8bfddc8cbf0b85d70ccec2e4961caff24aedf04cb8cf7d04",
+    "daemon-control-plane": "b6df6619881282190e73285003671d1de8c8ac6d86dcbd94eda5258dc5d2316b",
+    "daemon-core": "b87d1433acbc2b566a93775f6942d93b2abeccff6683a11cbcb762b22362873f",
+    "daemon-exchange": "f6d3be523fbb7a973df908f4fdd1f8cd12b3f9329ff2cd78045bd42dae54c747",
+    "daemon-observability": "d11c4533edb2192cda236d1851f00bb6ba303dcde78716d2d95ed44c258ab767",
+    "daemon-registry": "773bd010c92fb522eb8cad58160b5482e3fe60f94226f1a88fbbbae8047ba7ae",
+    "daemon-runtime": "0f2e8aebd3bfd42bc164a30fd8ad38a3c15f4d8921bde52c83f2ae389a319c27",
+    "daemon-storage": "9f5f54823f6fb3a3d4b7ffe7ca7d81d2e891a1e12c6e469692573ad96c6d12ad",
+    "daemon-workflow": "1e3f0a93453fa927a5ecee3cd77e115da363d5c9f9290e72d56d514e70e388d5",
+    "protocol-source": "22ea42053001bfe95e8da32486044d641ef8cfd3ad9e6c16fe66228ee183e4db",
+    "protocol-tests": "7c3ce8cf59691219f65d2604d21270e7285d032b29c61387005b706a959b02be"
+  },
+  "qualification": {
+    "state": "passed",
+    "source_tests": 235,
+    "installed_wheel_tests": 235,
+    "package_builds": 4,
+    "cli_help_checks": 2,
+    "synthetic_demo_operators": 3,
+    "model_calls": 0,
+    "hardware_calls": 0,
+    "external_submissions": 0,
+    "environment": "reused-dedicated-MADP-venv; public-only imports; scrubbed configuration",
+    "synthetic_demo": "scripts/demo_unified_core.py",
+    "reference_observations": "docs/architecture/REFERENCE_DEPLOYMENT_RESULTS.md"
+  },
+  "excluded_components": [
+    "operator implementations, cases and raw benchmark data",
+    "live configuration, credentials, runtime databases, requests and session identities",
+    "production GP/Engine deployment and external account/browser adapters"
+  ],
+  "wheel_sha256": {
+    "ascendop_agent_runner-5.5.0a1-py3-none-any.whl": "8e72e85b6cbeb2fa025e0d8250be06556e27986428b9b3163c2e3f68b866db60",
+    "ascendop_control-5.5.0a1-py3-none-any.whl": "5dc90bb70c760e524cc9d0e2153f93010f00506f258684199cf5ffff649edeaf",
+    "ascendop_protocol-5.5.0a1-py3-none-any.whl": "94c2cad682bdba1869669500ac4c851bea7cbb7d04f28ba66928e47ef228da19",
+    "ascendop_tester_daemon-5.5.0a1-py3-none-any.whl": "b5eab32f66449a5b955d7189794d43760f362a6d7626277ae96d3ac134fbdd37"
+  }
+}

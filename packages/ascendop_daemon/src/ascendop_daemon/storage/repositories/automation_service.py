@@ -70,6 +70,77 @@ class AutomationServiceRepository:
             ).fetchone()
         return decode_assistant_action(row, idempotent=True) if row is not None else None
 
+    def renew_pending_actor_action_lease(
+        self,
+        action_id: str,
+        *,
+        lease_seconds: int,
+    ) -> dict[str, Any]:
+        """Renew an unclaimed action whose authorization lease expired in queue."""
+
+        self.initialize()
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM assistant_action_requests WHERE action_id=?",
+                (action_id,),
+            ).fetchone()
+        if row is None:
+            raise ControlDatabaseError(f"unknown Actor action: {action_id}")
+        if str(row["state"]) != "pending":
+            return decode_assistant_action(row, idempotent=True)
+        if str(row["claimed_by"] or "") or str(row["claim_token"] or ""):
+            raise ControlDatabaseError(
+                "pending Actor action unexpectedly retains a claim identity"
+            )
+
+        raw = json.loads(str(row["request_json"]))
+        current = validate_actor_action_envelope(raw)
+        now_value = datetime.now(timezone.utc)
+        current_expiry = datetime.fromisoformat(
+            str(current["lease"]["expires_at"]).replace("Z", "+00:00")
+        )
+        if current_expiry > now_value:
+            return decode_assistant_action(row, idempotent=True)
+
+        renewed = dict(current)
+        renewed["lease"] = dict(current["lease"])
+        renewed["lease"]["expires_at"] = (
+            now_value + timedelta(seconds=max(1, int(lease_seconds)))
+        ).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        renewed = self.authorize_actor_action(
+            validate_actor_action_envelope(renewed)
+        )
+        renewed_json = canonical_json(renewed)
+        now = now_value.isoformat()
+        with self.transaction() as conn:
+            cursor = conn.execute(
+                "UPDATE assistant_action_requests SET request_json=?, updated_at=? "
+                "WHERE action_id=? AND state='pending' AND request_json=? "
+                "AND claimed_by='' AND claim_token=''",
+                (renewed_json, now, action_id, str(row["request_json"])),
+            )
+            if cursor.rowcount == 1:
+                self._event(
+                    conn,
+                    "actor-action-lease-renewed",
+                    "actor-action",
+                    action_id,
+                    {
+                        "lease_id": renewed["lease"]["lease_id"],
+                        "previous_expires_at": current["lease"]["expires_at"],
+                        "expires_at": renewed["lease"]["expires_at"],
+                    },
+                )
+            current_row = conn.execute(
+                "SELECT * FROM assistant_action_requests WHERE action_id=?",
+                (action_id,),
+            ).fetchone()
+        assert current_row is not None
+        return decode_assistant_action(
+            current_row,
+            idempotent=cursor.rowcount != 1,
+        )
+
     def create_actor_action_if_absent(
         self,
         action: dict[str, Any],
@@ -172,6 +243,11 @@ class AutomationServiceRepository:
                     continue
                 value = validate_actor_action_envelope(raw)
                 if value["effective_role"] != effective_role:
+                    continue
+                lease_expiry = datetime.fromisoformat(
+                    str(value["lease"]["expires_at"]).replace("Z", "+00:00")
+                )
+                if lease_expiry <= now_value:
                     continue
                 value = self.authorize_actor_action(value)
                 candidates.append((row, value))

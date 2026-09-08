@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ascendop.standalone-agent-action-context.v5",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "context_id", "action_id", "action_kind", "effective_role",
+    "campaign_id", "operator_id", "native_session_id", "contract_revision",
+    "execution_phase",
+    "workspace", "case_path", "case_bundle", "run_root", "outcome_path",
+    "task_binding_sha256", "input_source_sha256", "input_case_sha256",
+    "predecessor_evidence", "reference_context", "case_lifecycle",
+    "endpoint", "release", "performance_baseline", "test", "request",
+    "launcher", "harness", "output_contracts", "created_at"
+  ],
+  "properties": {
+    "schema": {"const": "ascendop.standalone-agent-action-context.v5"},
+    "context_id": {"$ref": "#/$defs/token"},
+    "action_id": {"$ref": "#/$defs/token"},
+    "action_kind": {"enum": ["solver.iterate", "solver.repair", "tester.casegen", "tester.case-repair"]},
+    "effective_role": {"enum": ["solver", "tester"]},
+    "campaign_id": {"type": "string", "minLength": 1},
+    "operator_id": {"type": "string", "minLength": 1},
+    "native_session_id": {"type": "string", "minLength": 1},
+    "contract_revision": {"$ref": "#/$defs/sha256"},
+    "execution_phase": {"enum": ["case-authoring", "candidate-test"]},
+    "workspace": {"$ref": "#/$defs/relative_path"},
+    "case_path": {"$ref": "#/$defs/relative_path"},
+    "case_bundle": {"type": "object"},
+    "run_root": {"$ref": "#/$defs/relative_path"},
+    "outcome_path": {"$ref": "#/$defs/relative_path"},
+    "task_binding_sha256": {"$ref": "#/$defs/sha256"},
+    "input_source_sha256": {"$ref": "#/$defs/sha256"},
+    "input_case_sha256": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+    "predecessor_evidence": {"type": "array", "maxItems": 2, "items": {"type": "object"}},
+    "reference_context": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/optional_solver_references"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema", "revision", "applicability_policy", "official_task_root",
+            "workspace_reference_index", "cann90_api_root", "op_knowledge"
+          ],
+          "properties": {
+            "schema": {"const": "ascendop.solver-reference-context.v1"},
+            "revision": {"$ref": "#/$defs/sha256"},
+            "applicability_policy": {"const": "read-only-evidence-revalidate-against-cann90-ascend910b"},
+            "official_task_root": {"$ref": "#/$defs/relative_path"},
+            "workspace_reference_index": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "sha256"],
+              "properties": {
+                "path": {"$ref": "#/$defs/relative_path"},
+                "sha256": {"$ref": "#/$defs/sha256"}
+              }
+            },
+            "cann90_api_root": {"$ref": "#/$defs/relative_path"},
+            "op_knowledge": {
+              "oneOf": [
+                {"type": "null"},
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["root", "tree_sha256"],
+                  "properties": {
+                    "root": {"$ref": "#/$defs/relative_path"},
+                    "tree_sha256": {"$ref": "#/$defs/sha256"}
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "case_lifecycle": {"oneOf": [{"type": "null"}, {"type": "object"}]},
+    "endpoint": {"oneOf": [{"type": "object"}, {"type": "null"}]},
+    "release": {"oneOf": [{"type": "object"}, {"type": "null"}]},
+    "performance_baseline": {"oneOf": [{"type": "object"}, {"type": "null"}]},
+    "test": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["mode", "operation_code", "test_version", "case_version", "case_range", "timeout_seconds"],
+          "properties": {
+            "mode": {"const": "correctness"},
+            "operation_code": {"const": "test.correctness"},
+            "test_version": {"type": "string", "minLength": 1},
+            "case_version": {"type": "string", "minLength": 1},
+            "case_range": {"type": "string", "minLength": 1},
+            "timeout_seconds": {"type": "integer", "minimum": 1}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["mode", "operation_code", "test_version", "case_version", "case_range", "perf_case_range", "timeout_seconds"],
+          "properties": {
+            "mode": {"const": "both"},
+            "operation_code": {"const": "test.performance"},
+            "test_version": {"type": "string", "minLength": 1},
+            "case_version": {"type": "string", "minLength": 1},
+            "case_range": {"type": "string", "minLength": 1},
+            "perf_case_range": {"type": "string", "minLength": 1},
+            "timeout_seconds": {"type": "integer", "minimum": 1}
+          }
+        }
+      ]
+    },
+    "request": {"type": "object"},
+    "launcher": {"type": "object"},
+    "harness": {"type": "object"},
+    "output_contracts": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "created_at": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"reference_context": {
+        "type": "object", "properties": {"schema": {"const": "ascendop.solver-reference-context.v2"}}
+      }}},
+      "then": {
+        "properties": {"effective_role": {"const": "solver"}},
+        "anyOf": [
+          {"properties": {"execution_phase": {"const": "case-authoring"}}},
+          {"properties": {"test": {"type": "object", "properties": {"mode": {"enum": ["correctness", "both", "performance"]}}}}}
+        ]
+      }
+    },
+    {
+      "if": {"properties": {"effective_role": {"const": "tester"}}},
+      "then": {"properties": {
+        "action_kind": {"enum": ["tester.casegen", "tester.case-repair"]},
+        "execution_phase": {"const": "case-authoring"},
+        "input_case_sha256": {"type": "null"},
+        "reference_context": {"type": "null"},
+        "case_lifecycle": {"type": "object"},
+        "endpoint": {"type": "null"},
+        "release": {"type": "null"},
+        "performance_baseline": {"type": "null"},
+        "test": {"type": "null"}
+      }}
+    },
+    {
+      "if": {"properties": {"effective_role": {"const": "solver"}}},
+      "then": {"properties": {
+        "action_kind": {"enum": ["solver.iterate", "solver.repair"]},
+        "reference_context": {"type": "object"}
+      }}
+    },
+    {
+      "if": {"properties": {"execution_phase": {"const": "case-authoring"}}},
+      "then": {"properties": {
+        "input_case_sha256": {"type": "null"},
+        "case_lifecycle": {"type": "object"},
+        "endpoint": {"type": "null"},
+        "release": {"type": "null"},
+        "performance_baseline": {"type": "null"},
+        "test": {"type": "null"}
+      }}
+    },
+    {
+      "if": {"properties": {"execution_phase": {"const": "candidate-test"}}},
+      "then": {"properties": {
+        "effective_role": {"const": "solver"},
+        "input_case_sha256": {"$ref": "#/$defs/sha256"},
+        "case_lifecycle": {"type": "null"},
+        "endpoint": {"type": "object"},
+        "release": {"type": "object"},
+        "test": {"type": "object"}
+      }}
+    }
+  ],
+  "$defs": {
+    "optional_solver_references": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "applicability_policy", "official_task_root", "optional"],
+      "properties": {
+        "schema": {"const": "ascendop.solver-reference-context.v2"},
+        "applicability_policy": {"const": "read-only-evidence-revalidate-against-cann90-ascend910b"},
+        "official_task_root": {"$ref": "#/$defs/relative_path"},
+        "optional": {
+          "type": "object", "additionalProperties": false,
+          "required": ["workspace_reference_index", "cann90_api", "op_knowledge"],
+          "properties": {
+            "workspace_reference_index": {"$ref": "#/$defs/reference_availability"},
+            "cann90_api": {"$ref": "#/$defs/reference_availability"},
+            "op_knowledge": {"$ref": "#/$defs/reference_availability"}
+          }
+        }
+      }
+    },
+    "reference_availability": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "state", "reason"],
+      "properties": {
+        "path": {"oneOf": [{"$ref": "#/$defs/relative_path"}, {"type": "null"}]},
+        "state": {"enum": ["available", "unavailable"]},
+        "reason": {"type": "string", "maxLength": 300}
+      },
+      "allOf": [{
+        "if": {"properties": {"state": {"const": "available"}}},
+        "then": {"properties": {"path": {"$ref": "#/$defs/relative_path"}, "reason": {"const": ""}}},
+        "else": {"properties": {"reason": {"pattern": "\\S"}}}
+      }]
+    },
+    "token": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "relative_path": {"type": "string", "minLength": 1, "pattern": "^(?![A-Za-z]:)(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"}
+  }
+}

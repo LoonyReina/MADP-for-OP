@@ -24,7 +24,7 @@
       "required": ["output_id", "output_kind", "artifact_ref", "sha256"],
       "properties": {
         "output_id": {"type": "string", "minLength": 1},
-        "output_kind": {"enum": ["source-change", "pending-evidence-repair", "solver-blocker", "solver-candidate-proposal", "solver-diagnostic-request"]},
+        "output_kind": {"enum": ["case-bundle", "source-change", "standalone-test-result", "pending-evidence-repair", "solver-blocker", "solver-candidate-proposal", "solver-diagnostic-request"]},
         "artifact_ref": {"type": "string", "minLength": 1},
         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
       }
