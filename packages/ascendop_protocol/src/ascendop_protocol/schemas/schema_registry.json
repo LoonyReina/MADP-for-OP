@@ -1,6 +1,6 @@
 {
   "schema": "ascendop.protocol-schema-registry.v1",
-  "protocol_release": "5.5.0a1",
+  "protocol_release": "5.6.0a1",
   "entries": [
     {"schema_id": "ascendop.flow.request.v3", "path": "flow_request.v3.schema.json", "compatibility": "exact"},
     {"schema_id": "ascendop.protocol-variable-registry.v3", "path": "protocol_variable_registry.v3.schema.json", "compatibility": "exact"},

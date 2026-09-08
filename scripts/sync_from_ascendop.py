@@ -12,6 +12,7 @@ from typing import Iterable
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = REPOSITORY_ROOT / "publication" / "core-manifest.json"
 ALLOWED_COMPONENTS = {
+    ("packages/ascendop_test_gateway/src/ascendop_test_gateway", "packages/ascendop_test_gateway/src/ascendop_test_gateway"): (),
     ("packages/ascendop_protocol/src", "packages/ascendop_protocol/src"): (),
     ("packages/ascendop_protocol/tests", "packages/ascendop_protocol/tests"): (),
     ("packages/ascendop_control/src", "packages/ascendop_control/src"): (),

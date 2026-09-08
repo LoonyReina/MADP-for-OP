@@ -26,12 +26,14 @@ ALLOWED_TOP_LEVEL = {
     "tests",
 }
 ALLOWED_PACKAGES = {
+    "ascendop_test_gateway",
     "ascendop_protocol",
     "ascendop_control",
     "ascendop_agent_runner",
     "ascendop_daemon",
 }
 IGNORED_NAMES = {
+    "ascendop_test_gateway.egg-info",
     ".git",
     ".pytest_cache",
     ".pytest-tmp",

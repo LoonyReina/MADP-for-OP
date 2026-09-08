@@ -1,7 +1,7 @@
 {
   "schema": "madp.current-publication.v1",
-  "milestone": "v5-unified-core",
+  "milestone": "v5-iteration-runtime",
   "publication_status": "local-candidate-not-published",
-  "provenance_path": "release/v5-unified-core/PROVENANCE.json",
+  "provenance_path": "release/v5-iteration-runtime/PROVENANCE.json",
   "public_tag": null
 }

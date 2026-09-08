@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ascendop-tester-daemon"
-version = "5.5.0a1"
+version = "5.6.0a1"
 description = "Public control-plane slice of the MADP daemon"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
-dependencies = ["ascendop-protocol==5.5.0a1", "ascendop-control==5.5.0a1"]
+dependencies = ["ascendop-protocol==5.6.0a1", "ascendop-control==5.6.0a1"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
