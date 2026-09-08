@@ -1,9 +1,9 @@
 {
   "schema": "madp.publication-provenance.v2",
   "milestone": "v5-unified-core",
-  "publication_status": "local-candidate-not-published",
+  "publication_status": "published-preview",
   "public_core_version": "5.5.0a1",
-  "public_tag": null,
+  "public_tag": "preview-2026-09-08-v5-unified-core",
   "source_snapshot": {
     "relationship": "Reviewed file-level extraction and shared-core refactoring; deployment-specific intake remains upstream.",
     "manifest_schema": "madp.public-core-manifest.v2",
@@ -47,9 +47,17 @@
     "production GP/Engine deployment and external account/browser adapters"
   ],
   "wheel_sha256": {
-    "ascendop_agent_runner-5.5.0a1-py3-none-any.whl": "8e72e85b6cbeb2fa025e0d8250be06556e27986428b9b3163c2e3f68b866db60",
-    "ascendop_control-5.5.0a1-py3-none-any.whl": "5dc90bb70c760e524cc9d0e2153f93010f00506f258684199cf5ffff649edeaf",
-    "ascendop_protocol-5.5.0a1-py3-none-any.whl": "94c2cad682bdba1869669500ac4c851bea7cbb7d04f28ba66928e47ef228da19",
-    "ascendop_tester_daemon-5.5.0a1-py3-none-any.whl": "b5eab32f66449a5b955d7189794d43760f362a6d7626277ae96d3ac134fbdd37"
+    "ascendop_agent_runner-5.5.0a1-py3-none-any.whl": "5f0eea1dc23e816976f6977f2f2117f94f38d26dc5e39fe079294ef8dd88f6dd",
+    "ascendop_control-5.5.0a1-py3-none-any.whl": "890a2bf19d5f680705597debe74ce763cbfe500104e52ccff616e6db91b6dc6f",
+    "ascendop_protocol-5.5.0a1-py3-none-any.whl": "9708669db8ba30c9db8482c619936da43a716d2e4a1e8d0a9a7a2b020a7c91e1",
+    "ascendop_tester_daemon-5.5.0a1-py3-none-any.whl": "beb669f968a47856dfa1d5dcba40881f8f1239a62a1d7a9cafb17cd58c1212f1"
+  },
+  "subsequent_milestone_qualification": {
+    "milestone": "v5-iteration-runtime",
+    "state": "passed-local-only",
+    "source_tests": 332,
+    "installed_wheel_tests": 332,
+    "package_builds": 5,
+    "publication": "not included in this tag"
   }
 }

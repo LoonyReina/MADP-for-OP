@@ -1,7 +1,9 @@
-# V5 Unified Core — local preview candidate
+# V5 Unified Core — public preview
 
-Package version: 5.5.0a1. This candidate has not been pushed or tagged.
-Publication waits for both this milestone and Iteration Runtime qualification.
+Package version: 5.5.0a1. Tag: `preview-2026-09-08-v5-unified-core`.
+Both milestones qualified before this release: Unified Core 235/235 tests;
+Iteration Runtime 332/332 tests (source/installed wheel). Only Unified Core is
+published here; Iteration Runtime remains a separate local candidate.
 
 Local qualification passed: 235 source tests, 235 installed-wheel tests, four
 wheel builds/installations, dependency and import-origin checks, both installed

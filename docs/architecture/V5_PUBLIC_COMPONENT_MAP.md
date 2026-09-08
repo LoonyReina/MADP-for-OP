@@ -1,7 +1,8 @@
 # V5 public component mapping (preparation)
 
 This is a source/extraction record, not an installed-release or deployment ledger.
-The public checkout is being prepared. Neither new milestone has been published.
+This publication contains qualified A only. B also qualified locally (332 source
+and 332 installed-wheel tests), but its source is not included in this release.
 
 ## A: Unified Core
 
@@ -32,8 +33,7 @@ boundary, NPU execution or external evaluator.
 
 Manifest v2 now records this source-facade mapping and explicit synchronized and
 retained paths. No unreviewed upstream module is automatically copied.
-Remaining A acceptance includes final package/provenance qualification and review
-of the new Git history.
+A passed final package/provenance qualification (235 source/235 wheel tests).
 Do not describe the generic host ports as a turnkey private deployment.
 
 ## B: Iteration Runtime
@@ -49,9 +49,11 @@ Do not describe the generic host ports as a turnkey private deployment.
 | Performance comparability | automation/performance_evidence.py | Extract accepted-fact baseline selection and measurement validation from private correctness-artifact loading; test environment/matrix mismatch. |
 | Fair delivery and pause/drain | completion_continuations.py; resident lifecycle | Keep terminal priority and lease renewal on existing outbox; exercise slow side effects and pause without accessing production. |
 
-These rows are a concrete preparation list, not a claim that B has already been
-exported or passed. They must be implemented and tested on top of A before A is
-pushed. B remains local until a separate publication authorization.
+These rows describe the subsequent local B candidate, which passed 332 source
+and 332 installed-wheel tests with five packages. It shares native commit, external
+completion, case/performance and delivery policy through required trusted host
+ports. B is not included in this tag and remains local until separately authorized.
+Provider/session discovery and concrete GP/Engine/browser deployment remain private.
 
 The initial upstream runtime/performance precheck passed 35 tests: RPC bounds and
 recovery, controlled real Windows process startup/disposal, writer observation

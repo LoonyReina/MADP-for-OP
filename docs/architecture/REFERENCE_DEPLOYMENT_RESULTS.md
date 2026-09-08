@@ -1,6 +1,6 @@
 # Reference deployment observations
 
-Draft for the two V5 milestones. This is not a benchmark of the public package.
+Sanitized observations accompanying the V5 milestones. This is not a benchmark of the public package.
 
 The private AscendOP integration exercised six operator development tasks during
 the September 2026 V5 iteration. At the recorded pause:

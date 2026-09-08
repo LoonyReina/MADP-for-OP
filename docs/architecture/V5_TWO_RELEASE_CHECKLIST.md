@@ -1,7 +1,7 @@
 # V5 two-release preparation
 
-Status: A candidate qualified locally; B preparation in progress. Neither is published.
-The existing V5 preliminary tag remains the current public release.
+Status: A and B qualified independently. This publication contains A only.
+A: 235 source/235 installed-wheel tests. B: 332/332; five packages, local only.
 
 Both milestones must pass before publishing the first. The second remains local
 until separately authorized. These are consecutive milestones, not maintained
@@ -39,27 +39,27 @@ the internal V5 work-package numbers are not package version numbers.
 - [x] Review the sanitized aggregate outcome summary and candidate source files;
   publication scan and whitespace checks pass. Review final pushed refs again at publication.
 
-## Milestone B: Iteration Runtime
+## Milestone B: Iteration Runtime (qualified locally, not in this release)
 
 Proposed tag: `preview-2026-09-08-v5-iteration-runtime`; local only at this stage.
 This explicitly proposes public generic runtime ports beyond the previous narrow
 core slice. It does not authorize exporting the concrete competition browser,
 account configuration, production Engine/GP deployment or operator assets.
 
-- [ ] Inherit A without a second implementation lineage or completion authority.
-- [ ] Export the resident transport/lifecycle components behind provider-neutral ports.
-- [ ] Test turn terminal versus writer quiescence, process birth identity, disconnected
+- [x] Inherit A without a second implementation lineage or completion authority.
+- [x] Export the resident transport/lifecycle components behind provider-neutral ports.
+- [x] Test turn terminal versus writer quiescence, process birth identity, disconnected
   responses and restart attachment; label platform-specific guarantees accurately.
-- [ ] Export test gateway/executor contracts and synthetic executor integration.
-- [ ] Separate local-test and external-evaluation queues, retaining one candidate identity.
-- [ ] Exercise rejection, exhausted policy allowance and uncertain external submission;
+- [x] Export test gateway/executor contracts and synthetic executor integration.
+- [x] Separate local-test and external-evaluation queues, retaining one candidate identity.
+- [x] Exercise rejection, exhausted policy allowance and uncertain external submission;
   never retry an uncertain side effect under a new identity.
-- [ ] Exercise active cases plus protected regressions and same-matrix performance
+- [x] Exercise active cases plus protected regressions and same-matrix performance
   comparisons; reject environment or measurement-contract mismatches.
-- [ ] Exercise slow publication, lease renewal, terminal priority and bounded delivery.
-- [ ] Demonstrate pause/drain/resume without restarting operator production.
-- [ ] Run isolated installation, runtime failure tests and sanitized export scan.
-- [ ] List real-process versus simulated-provider evidence; do not claim Kimi live
+- [x] Exercise slow publication, lease renewal, terminal priority and bounded delivery.
+- [x] Demonstrate pause/drain/resume without restarting operator production.
+- [x] Run isolated installation, runtime failure tests and sanitized export scan.
+- [x] List real-process versus simulated-provider evidence; do not claim Kimi live
   qualification, full cross-platform parity or large-scale reliability without tests.
 
 ## Release order
@@ -149,3 +149,9 @@ benchmarks. Use aggregate facts only, no raw performance tables or private artif
 Do not describe all intervention as autonomous. Maintenance and operator diagnosis
 included human-directed support. The public synthetic demo and private observations
 must be labeled separately.
+
+The local B qualification covers shared runtime ports, controlled Windows processes
+and synthetic providers/evaluators. Session/journal discovery and real external
+allowance policy remain host-owned. It does not qualify live Kimi, NPU execution,
+large-scale reliability or the private legacy Job keeper. A Windows virtualenv
+redirector identity issue in that non-exported keeper remains separately tracked.

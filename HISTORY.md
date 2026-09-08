@@ -50,3 +50,14 @@ or official-evaluation implementation. It is a development checkpoint, not the
 final Flow V5 acceptance release.
 
 Tag: `preview-2026-08-21-flow-v5-core`.
+
+## 2026-09-08: V5 Unified Core
+
+Tag: `preview-2026-09-08-v5-unified-core`. Packages: 5.5.0a1.
+
+Shared completion transactions, independent ACK delivery, workspace writer CAS,
+file proposals and short notifications replace duplicated interaction boundaries.
+Qualification: 235 source/235 wheel tests, four packages and a three-task synthetic
+iteration example. Reference observations are aggregate, not reproduced benchmarks.
+The next Iteration Runtime milestone qualified locally first but is not published
+by this tag. No private deployment, endpoints, accounts or operator assets are included.
