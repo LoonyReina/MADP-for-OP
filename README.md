@@ -1,136 +1,117 @@
 # MADP for OP
 
-MADP for OP is a domain-adaptable protocol and control-plane core for
-multi-agent development workflows. It was extracted from AscendOP, where
-multiple coding agents iterate on operators while scarce test endpoints remain
-under deterministic, auditable control.
+### Different harnesses. Shared workspaces. Verifiable operator iterations.
 
-This repository intentionally publishes the **MADP core**, not the complete
-AscendOP system. The public boundary contains typed contracts, durable action
-state, leases and receipts, provider-neutral Agent execution, the modern daemon
-control plane, and focused tests. GP/Engine architecture and interfaces are
-documented publicly; machine bindings, endpoint implementation, operator assets,
-and official evaluation stay in the private AscendOP deployment.
+[中文](README.zh-CN.md) · [Run the demo](docs/guides/FILE_COLLABORATION_DEMO.md) · [Architecture](docs/architecture/FILE_FIRST_COLLABORATION.md) · [Evidence & limits](docs/showcase/EVIDENCE.md)
 
-The current milestone is **V5 Iteration Runtime** preview (5.6.0a1), tagged
-`preview-2026-09-13-v5-iteration-runtime`.
-It shares completion transactions, recoverable outbox delivery, workspace
-ownership and accepted-fact views with the reference integration. A file-only
-Solver client and short notifications keep detailed interaction in workspace
-files. This is not a claim of complete Flow V5 acceptance or a turnkey deployment.
+MADP is a **file-first collaboration and execution core for operator engineering**.
+It treats a model together with its harness—the tools, session and runtime around
+it—as an independent participant. Participants keep their native environment
+while sharing source, experiment notes, test requests and durable results.
 
-This second milestone adds Gateway, resident-process and iteration-policy ports
-on top of Unified Core. Qualification covers 332 source and 332 installed-wheel
-tests across five packages, without live model or hardware calls. See the
-[two-release checklist](docs/architecture/V5_TWO_RELEASE_CHECKLIST.md),
-[component boundary](docs/architecture/V5_PUBLIC_COMPONENT_MAP.md), and
-[synthetic example](docs/architecture/UNIFIED_CORE_DEMO.md). The example exercises
-failure, feedback, revision and local success without live models or hardware.
+**The unit of collaboration is the workspace, not a shared chat or a required
+agent SDK.** MADP does not supply intelligence or replace coding agents. It
+provides the coordination and evidence boundary around their work.
 
-## Core architecture
+> Latest published: [V5 Iteration Runtime, 5.6.0a1](https://github.com/LoonyReina/MADP-for-OP/tree/preview-2026-09-13-v5-iteration-runtime).
+> This branch prepares **File-first Collaboration, 5.6.1a1**; it is not yet published.
+> This is a public core preview, not the complete private AscendOP deployment.
 
-```text
-domain adapter                         GP / Engine port
-     |                                       ^
-     v                                       |
-typed immutable action -> daemon control -> approved external work
-     |                         |
-     v                         v
-Agent runner ------------> typed receipt + evidence
+## Why this exists
+
+Operator development has two expensive loops: making results correct and making
+correct results fast. A useful hypothesis may come from another model, another
+terminal tool, or a human inspecting a device trace. That work should not lose
+its source lineage or test evidence when the participant changes.
+
+- **Can another participant continue?** Keep the candidate, cases, stage,
+  baseline and next experiment in the operator workspace.
+- **Did the experiment actually run?** Keep accepted requests, original results
+  and acknowledgements separate from conversation summaries.
+- **Can the researcher change direction?** Participants choose experiments,
+  legal case revisions and submit/hold; the framework executes and validates
+  requested work within configured authority.
+
+## How the pieces fit
+
+```mermaid
+flowchart LR
+    A[Model + harness A] --> W[Operator workspace]
+    B[Model + harness B] --> W
+    H[Human collaborator] --> W
+    W --> C[Host admission: managed or standalone]
+    C --> G[Gateway: request journal and evidence]
+    G --> E[Executor port]
+    E --> G
+    G --> W
 ```
 
-The reasoning performed by an Agent is open-ended. MADP limits only the
-side-effect boundary: work is admitted as a typed action, claimed with a lease,
-completed with a receipt, and advanced by a control-plane gate. An Agent cannot
-silently select an endpoint, rewrite queue state, or invent a workflow gate.
+Only one admitted writer owns a candidate at a time; different operator
+workspaces can progress independently. Managed scheduling uses the daemon.
+Standalone hosts may drive the same Gateway lifecycle without requiring the
+daemon to message their harness. An external evaluator is a separate adapter,
+not implied by a local PASS. [Collaboration model](docs/architecture/FILE_FIRST_COLLABORATION.md).
 
-## Published packages
+## Try a real boundary with a small synthetic experiment
+
+Use Python **3.11+** in a dedicated virtual environment. No model key, GPU/NPU,
+remote endpoint or browser account is needed.
+
+```bash
+python -m venv .venv
+# Activate .venv with the command for your shell, then:
+python -m pip install ./packages/ascendop_protocol ./packages/ascendop_control ./packages/ascendop_agent_runner ./packages/ascendop_daemon ./packages/ascendop_test_gateway
+python scripts/demo_file_collaboration.py --root artifacts/file-demo-01
+```
+
+Two fixture processes exchange files: the first produces a failing toy candidate;
+the second reads the result and repairs it. The **real public Gateway** retains
+both results. A fresh Gateway object recovers accepted evidence without
+resubmitting; ACK is delivered separately. External submission stays on HOLD.
+
+Expected: `failed (1/3) → completed (3/3)`, two delivered ACKs, zero model/device/
+external calls. This tests protocol mechanics, **not live multi-model reasoning**.
+Use a new output directory for each run. [Walkthrough](docs/guides/FILE_COLLABORATION_DEMO.md).
+
+## Public packages
 
 | Package | Responsibility |
 | --- | --- |
-| `ascendop-protocol` | Immutable action, workflow, management, evidence, and wire contracts. |
-| `ascendop-control` | SQLite-backed action state, leases, receipts, idempotency, and query/command services. |
-| `ascendop-agent-runner` | Serialized Agent execution, workspace isolation, provider drivers, heartbeat, and uncertain-turn recovery. |
-| `ascendop-tester-daemon` | Public modern control-plane slice: action coordination, scheduling, retry, storage, transport ports, observability, registries, and gates. |
+| `ascendop-protocol` | Typed action, evidence, actor and wire contracts. |
+| `ascendop-control` | Durable actions, leases, completion transactions and outbox. |
+| `ascendop-agent-runner` | Provider ports, workspace isolation and process/turn lifecycle. |
+| `ascendop-tester-daemon` | Managed scheduling, file-client handoff and short notifications. |
+| `ascendop-test-gateway` | Standalone test lifecycle, retained results, recovery and ACK. |
 
-The `ascendop_*` Python namespace is retained for compatibility with the
-reference deployment. The contracts themselves separate role, provider,
-transport, endpoint, and domain policy so another domain can replace the
-AscendOP profile without replacing the action lifecycle.
+The historical `ascendop_*` names remain for compatibility. Concrete GP relay /
+Engine deployment, hardware runners, operator sources/cases, account automation
+and live configuration are **not included**. Real deployments supply trusted
+domain adapters; the demo supplies toy ports.
 
-## What is generic
+Some exported policy classes retain earlier automation semantics. The latest
+agent-owned research strategy is documented separately; this is **not a claim
+that every legacy runtime gate has been migrated**.
+[Capability boundary](docs/architecture/FILE_FIRST_COLLABORATION.md#implementation-boundary).
 
-- configured Agent roles and provider drivers;
-- immutable actions and idempotency identities;
-- claim, run, uncertain, retry, completion, failure, and cancellation states;
-- leases, heartbeats, receipts, output seals, and evidence references;
-- daemon-owned gate authority and typed escalation;
-- pluggable domain adapters and external executor transports.
+## Evidence, not just a diagram
 
-AscendOP supplies one reference profile: Solver and Tester roles, operator
-candidate identities, CANN endpoint capabilities, GitPartner transport, and
-correctness/performance evidence. Those choices are not requirements of MADP.
-See [Generality](docs/architecture/GENERALITY.md) and
-[Core boundary](docs/architecture/CORE_BOUNDARY.md). The implementation split is
-detailed in [Public daemon slice](docs/architecture/DAEMON_PUBLIC_SLICE.md), and
-the remote execution port in [GP and Engine boundary](docs/architecture/GP_ENGINE_BOUNDARY.md).
+- Published release B passed **332 source + 332 installed-wheel tests** across
+  five packages in a dedicated Windows environment, with zero live model or
+  hardware calls. [Provenance](release/v5-iteration-runtime/PROVENANCE.json).
+- The next edition adds file handoff, prompt and long-path artifact regressions.
+  [Candidate qualification](release/file-first-collaboration/README.md).
+- Private AscendOP collaboration involving Codex, Kimi and DSH informed the design,
+  including manual coordination and recovery. This is **experience, not public
+  end-to-end adapter certification or a controlled benchmark**.
+  [Lessons and limits](docs/showcase/EVIDENCE.md).
 
-## Repository boundary
+## Explore and contribute
 
-Included:
+- [Value and differentiation](docs/showcase/PROJECT_POSITIONING.md)
+- [Participant handoff](docs/guides/PARTICIPANT_HANDOFF.md)
+- [Performance strategy](docs/guides/PERFORMANCE_ITERATION.md)
+- [Roadmap](docs/showcase/ROADMAP.md) and [contributing](CONTRIBUTING.md)
+- [Publication boundary](docs/architecture/PUBLICATION_MODEL.md) and [history](HISTORY.md)
 
-- `packages/ascendop_protocol`
-- `packages/ascendop_control`
-- `packages/ascendop_agent_runner`
-- `packages/ascendop_daemon`
-- architecture documents, package tests, publication manifest, and provenance
-
-Not included:
-
-- daemon resident-service bootstrap and historical compatibility bridge;
-- GitPartner and endpoint Engine implementation, live routing, or machine bootstrap;
-- live topology, credentials, queues, databases, payloads, or results;
-- operator source, testcase collections, profiles, or official evaluation.
-
-The persistent local checkout lives at `AscendOP/code/MADP-for-OP`. Public
-updates are one-way, allowlisted exports from AscendOP core sources into this
-repository. See [Publication model](docs/architecture/PUBLICATION_MODEL.md).
-
-## Development
-
-Python 3.10 or newer is required.
-
-```bash
-python -m pip install -e packages/ascendop_protocol
-python -m pip install -e packages/ascendop_control
-python -m pip install -e packages/ascendop_agent_runner
-python -m pip install -e packages/ascendop_daemon
-python -m pytest -q
-```
-
-From the private AscendOP workspace, maintainers can check implementation drift
-without copying any unlisted component:
-
-```bash
-python scripts/sync_from_ascendop.py --ascendop-root .. --check
-```
-
-Use `--apply` only after reviewing the manifest and source changes, then run the
-tests and publication scan before committing.
-
-## Milestones
-
-- `archive-2026-06-02`: Scheduler V2 source snapshot.
-- `archive-2026-08-07-flow-v3`: typed Flow V3 data-plane snapshot.
-- `archive-2026-08-16-flow-v4-core`: curated Flow V4 MADP core architecture.
-- `preview-2026-08-21-flow-v5-core`: preliminary Flow V5 protocol and control
-  checkpoint, before standalone test-gateway development.
-
-Historical tags preserve the evolution of the project. The Flow V4 core tag is
-the first milestone with the deliberately narrow public boundary described
-above. See [Flow V5 preview](docs/architecture/FLOW_V5_PREVIEW.md) for the
-current checkpoint and its explicit incomplete scope.
-
-## License
-
-Apache License 2.0. See [LICENSE](LICENSE).
+Apache-2.0. See [LICENSE](LICENSE). Mentioning model/tool providers implies no
+affiliation or endorsement.

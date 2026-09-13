@@ -4,6 +4,17 @@ This repository preserves sanitized architecture milestones from AscendOP MADP.
 Publication commits are not backdated; source dates and release identities are
 recorded in annotated tags and provenance files.
 
+## 2026-09-13: V5 Iteration Runtime published; next edition prepared
+
+Published release B: `preview-2026-09-13-v5-iteration-runtime`, version 5.6.0a1,
+commit `c04f60bcbdd0dab754bb0070ab5ca67d52c2d884`. Qualification: 332 source
+and 332 installed-wheel tests across five packages.
+
+The next local branch prepares File-first Collaboration (5.6.1a1): model-plus-
+harness participants, file-based handoff, a synthetic Gateway demo, selected
+prompt/artifact fixes and an explicit evidence/roadmap package. It is not yet
+published or tagged. [Prepared edition](release/file-first-collaboration/README.md).
+
 ## 2026-06-02: Scheduler V2 source snapshot
 
 The earliest preserved design used a shared task ledger, one logical writer per

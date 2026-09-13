@@ -6,7 +6,7 @@ Their architecture is public even though the current deployment implementation
 and machine configuration are not.
 
 ```text
-daemon outbox
+managed daemon outbox / admitted standalone host
     |
     | immutable request + target generation + idempotency identity
     v
@@ -21,14 +21,14 @@ endpoint Engine
 sealed result + evidence references
     |
     v
-daemon ingestion and gate reconciliation
+Gateway retention; host consumption / managed continuation
 ```
 
 ## GP responsibilities
 
 - verify the registered route and target generation;
 - preserve request, attempt, and idempotency identities;
-- transfer only daemon-approved payloads;
+- transfer only payloads admitted by the configured trusted host;
 - report acceptance, progress, transport failure, and return identity;
 - make retries observable without deciding workflow policy.
 
@@ -42,10 +42,13 @@ daemon ingestion and gate reconciliation
 
 ## Authority
 
-The daemon selects a gate and endpoint capability. GP does not choose an
-operator or retry policy, and Engine does not promote a candidate. A transport
-or execution result becomes workflow evidence only after daemon ingestion
-validates its identity, schema, and expected generation.
+The managed daemon or standalone host admits a request against configured
+endpoint capabilities. GP does not choose operator strategy, and Engine does not
+promote candidates. Gateway validates and retains the return; the managed host
+also commits continuation before authorizing ACK. Independent hosts may consume
+and ACK the original request without native daemon-to-harness messaging.
+Agents decide research stages and submit/hold; transport success is not external
+correctness. See [the current boundary](FILE_FIRST_COLLABORATION.md).
 
 The public daemon package exposes this boundary through
 `ascendop_daemon.exchange.transport_contracts` and the wire/protocol packages.

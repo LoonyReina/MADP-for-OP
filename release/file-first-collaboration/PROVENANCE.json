@@ -1,0 +1,50 @@
+{
+  "schema": "madp.publication-provenance.v2",
+  "milestone": "file-first-collaboration",
+  "publication_status": "prepared-not-published",
+  "public_core_version": "5.6.1a1",
+  "public_tag": null,
+  "allowlisted_component_digests": {
+    "agent-runner-source": "5a7334c14e5271160fe52c7b3aeb2648380828b1f2f85f98750ef49912dda262",
+    "agent-runner-tests": "9f89488133d6c6d3f3a8f70d78f864c48e63853944734f53c391d2b43f3c13c3",
+    "control-source": "0e38a6e18cd8015d3860f5afce58f68b923b6074ecd852e706139deaa6c0777b",
+    "control-tests": "d4e106c71f93e01ea8ffda8f67bf7fc62ae74cc3ee7822b30840633c45029a8b",
+    "daemon-automation": "0955dcab0cc36fdd1f27a322306406163c77f398f88027c8b28b261cceba7bd5",
+    "daemon-control-plane": "b6df6619881282190e73285003671d1de8c8ac6d86dcbd94eda5258dc5d2316b",
+    "daemon-core": "b87d1433acbc2b566a93775f6942d93b2abeccff6683a11cbcb762b22362873f",
+    "daemon-exchange": "f6d3be523fbb7a973df908f4fdd1f8cd12b3f9329ff2cd78045bd42dae54c747",
+    "daemon-observability": "d11c4533edb2192cda236d1851f00bb6ba303dcde78716d2d95ed44c258ab767",
+    "daemon-registry": "773bd010c92fb522eb8cad58160b5482e3fe60f94226f1a88fbbbae8047ba7ae",
+    "daemon-runtime": "07c799dd20e1c31e9c2b1a1db6f24842851ee1a8176f3439e610d16bd963fcc0",
+    "daemon-storage": "9f5f54823f6fb3a3d4b7ffe7ca7d81d2e891a1e12c6e469692573ad96c6d12ad",
+    "daemon-workflow": "8c09278b3e28fb830bb891103688b1c1920040c0ca2b8d2b8f4172db4efe3d30",
+    "gateway-runtime": "f695c6ee6c37f18db31af17a56d45681785213dc69e86b446da84a927b3c117c",
+    "protocol-source": "52454c48b2452fe02691823a1959742e8ec71d61a50e4621fe151c6b7a881ae0",
+    "protocol-tests": "7c3ce8cf59691219f65d2604d21270e7285d032b29c61387005b706a959b02be"
+  },
+  "qualification": {
+    "state": "passed",
+    "qualified_on": "2026-09-13",
+    "source_tests": 339,
+    "installed_wheel_tests": 339,
+    "package_builds": 5,
+    "cli_help_checks": 2,
+    "synthetic_managed_demo_tasks": 3,
+    "synthetic_file_demo_writers": 2,
+    "model_calls": 0,
+    "hardware_calls": 0,
+    "external_submissions": 0,
+    "environment": "reused-dedicated-MADP-venv; public-only imports; scrubbed configuration",
+    "platform": "Windows; Python 3.14; controlled process fixtures",
+    "scope": "No live provider, device, external evaluator or Windows power-loss claim"
+  },
+  "scope": "File-first collaboration docs and synthetic demo; selected generic prompt/artifact fixes; no live provider or hardware adapters.",
+  "wheel_sha256": {
+    "ascendop_agent_runner-5.6.1a1-py3-none-any.whl": "498ba7b2b6fe873fc2c710c1a5162153ea284730701a19e9e260811a495d165a",
+    "ascendop_control-5.6.1a1-py3-none-any.whl": "46737d4ec3e3212dcbc72b34c1c90d1d78640b6d536c5ada18620a08fc26efe6",
+    "ascendop_protocol-5.6.1a1-py3-none-any.whl": "81f24e99f3fd83a2880321f8fd39bee04895a9604288b85028489c50ed5bda09",
+    "ascendop_test_gateway-5.6.1a1-py3-none-any.whl": "315942f9553d7fd9efa1ed0c8213b927aca8e49f221f905ea45f69b67c788e0b",
+    "ascendop_tester_daemon-5.6.1a1-py3-none-any.whl": "1c30e7a3f3080a1760590d73a60761e73b9ccf37798ba1127ca1477806c091f7"
+  },
+  "parent_release_commit": "c04f60bcbdd0dab754bb0070ab5ca67d52c2d884"
+}

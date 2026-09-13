@@ -21,6 +21,7 @@ python -m pip install -e packages/ascendop_protocol
 python -m pip install -e packages/ascendop_control
 python -m pip install -e packages/ascendop_agent_runner
 python -m pip install -e packages/ascendop_daemon
+python -m pip install -e packages/ascendop_test_gateway
 python -m pytest -q
 python scripts/publication_scan.py
 ```
@@ -34,12 +35,15 @@ for that clean check, not a requirement for routine work. Editable/source tests
 alone do not demonstrate wheel dependency closure.
 
 For repeated qualification in an existing dedicated environment, add
-`--venv <madp-venv> --skip-tooling`. This replaces only its four MADP wheels;
+`--venv <madp-venv> --skip-tooling`. This replaces only its five MADP wheels;
 omit `--skip-tooling` if test dependencies need installation. Output directories
 are new per run so previous reports are retained.
 
-Changes imported from the private AscendOP workspace must pass
-`scripts/sync_from_ascendop.py --check` after synchronization. The allowlist in
+Changes imported from the private AscendOP workspace must be checked with
+`scripts/sync_from_ascendop.py --component <reviewed-component> --check`.
+Full upstream drift can include deliberately unexported dependencies; do not
+bulk-copy it to make a comparison green. Record selected component provenance
+and qualify the public result. The allowlist in
 `publication/core-manifest.json` is a security boundary; widening it requires an
 architecture review.
 

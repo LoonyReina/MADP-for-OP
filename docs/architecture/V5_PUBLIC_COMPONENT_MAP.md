@@ -1,8 +1,11 @@
 # V5 public component mapping (preparation)
 
 This is a source/extraction record, not an installed-release or deployment ledger.
-This publication includes B on top of A. Qualification: A 235/235 and B 332/332
-source/installed-wheel tests. It does not deploy the private reference system.
+The A/B mapping below is historical. Qualification: A 235/235 and B 332/332
+source/installed-wheel tests. The prepared next edition adds only reviewed
+notification and retained-artifact fixes plus a public demonstration; see
+[File-first Collaboration](../../release/file-first-collaboration/README.md).
+It does not deploy or completely export the private reference system.
 
 ## A: Unified Core
 

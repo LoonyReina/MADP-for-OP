@@ -19,7 +19,7 @@ from .contracts import canonical_artifact_root
 SCHEMA = "ascendop.gateway-terminal-retention.v1"
 
 
-from ascendop_protocol.filesystem import sync_directory
+from ascendop_protocol.filesystem import filesystem_path, sync_directory
 
 
 def retain_terminal_evidence(run_dir: Path, event: Mapping[str, Any]) -> dict[str, Any]:
@@ -46,15 +46,17 @@ def read_retained_file(run_dir: Path, retained: Mapping[str, Any], path: Path) -
     for parent in (raw, *raw.parents):
         if parent == run_dir:
             break
-        if parent.is_symlink() or getattr(parent, "is_junction", lambda: False)():
+        io_parent = filesystem_path(parent.parent) / parent.name
+        if io_parent.is_symlink() or getattr(io_parent, "is_junction", lambda: False)():
             raise ValueError("linked retained artifact is forbidden")
     relative = resolved.relative_to(run_dir).as_posix()
     entries = [entry for entry in retained["files"] if entry["path"] == relative]
     if retained.get("schema") != SCHEMA or len(entries) != 1:
         raise ValueError("consumed artifact is not uniquely retained")
-    if not stat.S_ISREG(resolved.stat().st_mode):
+    io_resolved = filesystem_path(resolved)
+    if not stat.S_ISREG(io_resolved.stat().st_mode):
         raise ValueError("consumed artifact is not a regular file")
-    data = resolved.read_bytes()
+    data = io_resolved.read_bytes()
     if (len(data) != entries[0]["size"]
             or hashlib.sha256(data).hexdigest() != entries[0]["sha256"]):
         raise ValueError("consumed terminal artifact changed")
@@ -72,32 +74,36 @@ def _index(run_dir: Path, event: Mapping[str, Any], *, sync: bool) -> dict[str, 
     for parent in (raw, *raw.parents):
         if parent == run_dir:
             break
-        if parent.is_symlink() or getattr(parent, "is_junction", lambda: False)():
+        io_parent = filesystem_path(parent.parent) / parent.name
+        if io_parent.is_symlink() or getattr(io_parent, "is_junction", lambda: False)():
             raise ValueError("linked terminal evidence is forbidden")
-    if not root.is_dir() or not (root / "result_bundle").is_dir():
+    io_root = filesystem_path(root)
+    if not io_root.is_dir() or not (io_root / "result_bundle").is_dir():
         raise ValueError("terminal evidence result bundle is missing")
     for name in ("terminal.json", "state.json", "artifact_manifest.json"):
-        if not (root / name).is_file():
+        if not (io_root / name).is_file():
             raise ValueError(f"terminal evidence is missing {name}")
     marker = root.parent / ".payload.sha256"
+    io_marker = filesystem_path(marker)
     if (
-        not marker.is_file()
-        or marker.read_text(encoding="ascii").strip().lower()
+        not io_marker.is_file()
+        or io_marker.read_text(encoding="ascii").strip().lower()
         != event["result_payload_sha256"]
     ):
         raise ValueError("terminal evidence payload digest marker mismatch")
     files, directories = [], [root, root.parent]
-    for path in sorted([*root.rglob("*"), marker]):
-        if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+    for io_path in sorted([*io_root.rglob("*"), io_marker]):
+        path = Path(canonical_artifact_root(str(io_path)))
+        if io_path.is_symlink() or getattr(io_path, "is_junction", lambda: False)():
             raise ValueError("linked terminal evidence is forbidden")
-        if path.is_dir():
+        if io_path.is_dir():
             directories.append(path)
             continue
-        if not stat.S_ISREG(path.stat().st_mode):
+        if not stat.S_ISREG(io_path.stat().st_mode):
             raise ValueError("non-regular terminal evidence is forbidden")
         # Windows CRT fsync requires a writable handle. No bytes are modified;
         # an unsyncable/read-only file keeps the return unacknowledged.
-        with path.open("r+b" if sync and os.name == "nt" else "rb") as handle:
+        with io_path.open("r+b" if sync and os.name == "nt" else "rb") as handle:
             before = os.fstat(handle.fileno())
             hasher = hashlib.sha256()
             for block in iter(lambda: handle.read(1024 * 1024), b""):

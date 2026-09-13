@@ -114,6 +114,8 @@ def main() -> int:
                     run("entry-" + entry, [str(executable), "--help"], cwd=work, timeout=30)
                 run("synthetic-demo", [str(python), "-I", str(checkout / "scripts/demo_unified_core.py"),
                     "--root", str(work / "demo"), "--operators", "3"], cwd=work)
+                run("file-collaboration-demo", [str(python), "-I", str(checkout / "scripts/demo_file_collaboration.py"),
+                    "--root", str(work / "file-demo")], cwd=work)
     report = {"schema": "madp.isolated-qualification.v1", "state": "passed" if all(r["exit_code"] == 0 for r in results) else "failed",
         "production_access": "none", "environment": "reused-dedicated-venv" if args.venv else "fresh-venv",
         "checks": results}

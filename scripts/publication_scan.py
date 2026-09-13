@@ -15,6 +15,7 @@ ALLOWED_TOP_LEVEL = {
     "HISTORY.md",
     "LICENSE",
     "README.md",
+    "README.zh-CN.md",
     "SECURITY.md",
     "docs",
     "packages",
