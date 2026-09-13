@@ -3,17 +3,14 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ascendop-control"
+name = "ascendop-test-gateway"
 version = "5.6.0a1"
-description = "Durable action, lease, and receipt control for MADP"
+description = "MADP generic evaluation gateway runtime"
 readme = "README.md"
+requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
-requires-python = ">=3.10"
 dependencies = ["ascendop-protocol==5.6.0a1"]
-
-[project.scripts]
-ascendop-control-api = "ascendop_control.api.main:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PACKAGES = ("ascendop_protocol", "ascendop_control", "ascendop_agent_runner", "ascendop_daemon")
+PACKAGES = ("ascendop_protocol", "ascendop_control", "ascendop_agent_runner", "ascendop_daemon", "ascendop_test_gateway")
 
 
 def isolated_environment(work: Path, venv: Path | None = None) -> dict[str, str]:
@@ -53,7 +53,7 @@ def stage_public(work: Path) -> Path:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--work-root", type=Path, required=True)
-    parser.add_argument("--venv", type=Path, help="reuse a dedicated MADP venv (its four MADP wheels will be updated)")
+    parser.add_argument("--venv", type=Path, help="reuse a dedicated MADP venv (its MADP wheels will be updated)")
     parser.add_argument("--skip-tooling", action="store_true", help="test dependencies are already installed")
     args = parser.parse_args()
     work = args.work_root.resolve()

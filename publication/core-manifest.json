@@ -224,8 +224,8 @@
       ],
       "sync_paths": [
         "__init__.py",
-        "agent_completion_core.py",
         "agent_completion.py",
+        "agent_completion_core.py",
         "agent_context.py",
         "agent_execution_ports.py",
         "agent_outputs.py",
@@ -233,23 +233,29 @@
         "agent_workspace.py",
         "assistant_trigger.py",
         "candidate_proposals.py",
+        "case_data_policy.py",
         "case_proposals.py",
         "codex_ide_preflight.py",
         "completion_facts.py",
         "delivery_fence.py",
+        "delivery_runtime.py",
         "evidence_operations.py",
         "formal_continuation.py",
         "gate_validation.py",
         "managed_completion_commit.py",
         "manager_notifications.py",
+        "performance_policy.py",
         "record_intake.py",
+        "resident_boundary.py",
         "solver_liveness.py",
         "tester_liveness.py",
         "trigger_state.py",
         "worker_liveness.py",
         "workspace_file_client.py",
         "workspace_projection_port.py",
-        "workspace_snapshot.py"
+        "workspace_snapshot.py",
+        "external_completion_core.py",
+        "native_commit.py"
       ],
       "retained_paths": [
         "agent_gate.py",
@@ -395,15 +401,20 @@
       ],
       "sync_paths": [
         "__init__.py",
+        "app_server_process.py",
+        "app_server_rpc.py",
         "control_api_credentials.py",
         "dispatcher_factory.py",
         "management_composition.py",
         "periodic_worker.py",
         "process_adapter.py",
+        "process_identity.py",
         "process_inspection.py",
         "python_environment.py",
         "resident_watchdog.py",
-        "windows_bootstrap.py"
+        "resident_writer_observation.py",
+        "windows_bootstrap.py",
+        "windows_gated_process.py"
       ],
       "retained_paths": [
         "application_lifecycle.py",
@@ -418,7 +429,6 @@
         "evidence_operation_intake.py",
         "locking.py",
         "policy_registry.py",
-        "process_identity.py",
         "release_identity.py",
         "resident_service.py",
         "resident_supervisor.py",
@@ -518,6 +528,24 @@
         "solver_diagnostics.py",
         "task_execution_profile.py",
         "typed_executor.py"
+      ]
+    },
+    {
+      "name": "gateway-runtime",
+      "source": "packages/ascendop_test_gateway/src/ascendop_test_gateway",
+      "destination": "packages/ascendop_test_gateway/src/ascendop_test_gateway",
+      "excluded_paths": [],
+      "sync_paths": [
+        "contracts.py",
+        "ports.py",
+        "runtime.py",
+        "journal.py",
+        "terminal_evidence.py",
+        "adapters/memory.py"
+      ],
+      "retained_paths": [
+        "__init__.py",
+        "adapters/__init__.py"
       ]
     }
   ],

@@ -1,10 +1,10 @@
 # V5 two-release preparation
 
-Status: A and B qualified independently. This publication contains A only.
-A: 235 source/235 installed-wheel tests. B: 332/332; five packages, local only.
+Status: A published September 8; B authorized for publication September 13.
+A: 235 source/235 installed-wheel tests. B: 332/332; five packages.
 
-Both milestones must pass before publishing the first. The second remains local
-until separately authorized. These are consecutive milestones, not maintained
+Both milestones passed before publishing the first. The second was kept local
+until the separate September 13 authorization. These are consecutive milestones, not maintained
 forks, and neither is a declaration of complete private Flow V5 acceptance.
 
 ## Milestone A: Unified Core
@@ -39,9 +39,9 @@ the internal V5 work-package numbers are not package version numbers.
 - [x] Review the sanitized aggregate outcome summary and candidate source files;
   publication scan and whitespace checks pass. Review final pushed refs again at publication.
 
-## Milestone B: Iteration Runtime (qualified locally, not in this release)
+## Milestone B: Iteration Runtime
 
-Proposed tag: `preview-2026-09-08-v5-iteration-runtime`; local only at this stage.
+Release tag: `preview-2026-09-13-v5-iteration-runtime`.
 This explicitly proposes public generic runtime ports beyond the previous narrow
 core slice. It does not authorize exporting the concrete competition browser,
 account configuration, production Engine/GP deployment or operator assets.
@@ -58,7 +58,8 @@ account configuration, production Engine/GP deployment or operator assets.
   comparisons; reject environment or measurement-contract mismatches.
 - [x] Exercise slow publication, lease renewal, terminal priority and bounded delivery.
 - [x] Demonstrate pause/drain/resume without restarting operator production.
-- [x] Run isolated installation, runtime failure tests and sanitized export scan.
+- [x] Final isolated installation, 332 source/332 wheel tests, five wheel builds,
+  dependency/origin checks, CLI and synthetic demo all pass; sanitized scan passes.
 - [x] List real-process versus simulated-provider evidence; do not claim Kimi live
   qualification, full cross-platform parity or large-scale reliability without tests.
 
@@ -70,7 +71,9 @@ account configuration, production Engine/GP deployment or operator assets.
 4. Recheck A's wheel hashes, tests, documentation, tag target and publication scan.
 5. Push only A's commit to the public branch and A's annotated tag. B must not be
    reachable from any pushed ref. Verify the remote branch/tag after the push.
-6. Keep B locally and report its ready/unpublished status with remaining limitations.
+6. Keep B locally until separately authorized (completed September 13).
+7. Requalify B, merge while preserving A history, then push main plus only B's
+   annotated tag and verify both remote refs. Later design work stays separate.
 
 ## Publication security
 
@@ -92,7 +95,7 @@ Do not load private packages through Python path overrides or use live state.
 Before publishing each release, verify clean wheel installation once for its final
 candidate. The optional helper
 `python scripts/qualify_isolated.py --venv <existing-madp-venv> --skip-tooling --work-root <new-output-directory>`
-reuses the existing environment and replaces its four MADP wheels. Omit `--venv`
+reuses the existing environment and replaces its MADP wheels. Omit `--venv`
 to create a fresh environment for a final clean-install check. The new output
 directory preserves each test report, not a requirement to rebuild dependencies.
 The helper copies only Git-selected public files,
@@ -150,8 +153,22 @@ Do not describe all intervention as autonomous. Maintenance and operator diagnos
 included human-directed support. The public synthetic demo and private observations
 must be labeled separately.
 
-The local B qualification covers shared runtime ports, controlled Windows processes
-and synthetic providers/evaluators. Session/journal discovery and real external
-allowance policy remain host-owned. It does not qualify live Kimi, NPU execution,
-large-scale reliability or the private legacy Job keeper. A Windows virtualenv
-redirector identity issue in that non-exported keeper remains separately tracked.
+## Runtime evidence boundary
+
+B exports shared runtime mechanisms with mandatory trusted host callbacks; it does
+not export the private deployment launcher or session/journal discovery layer.
+The original admission/terminal database commits, external result binding and
+priority/lease loop are shared, not independent demonstration state machines.
+
+The test matrix separates real Windows process launch/exit and process-death ACK
+recovery from synthetic RPC/provider responses, trusted case validators and
+external policy decisions. Allowance exhaustion is injected by the trusted
+policy adapter; this core neither grants quota nor contacts a submission site.
+No live Kimi/provider interoperability or large-scale load claim is made.
+
+Upstream extraction regression found a separate, non-exported legacy Job keeper
+issue when launched through a Windows virtualenv redirector: its saved keeper
+identity differs from the actual interpreter process identity during crash
+recovery. The three failing legacy recovery fixtures are not included in B's
+export or acceptance claim. The private installed deployment was not changed.
+A prior skill-manifest marker mismatch also remains a separate private issue.

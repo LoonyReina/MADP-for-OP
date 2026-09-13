@@ -1,7 +1,7 @@
 {
   "schema": "madp.current-publication.v1",
-  "milestone": "v5-unified-core",
+  "milestone": "v5-iteration-runtime",
   "publication_status": "published-preview",
-  "provenance_path": "release/v5-unified-core/PROVENANCE.json",
-  "public_tag": "preview-2026-09-08-v5-unified-core"
+  "provenance_path": "release/v5-iteration-runtime/PROVENANCE.json",
+  "public_tag": "preview-2026-09-13-v5-iteration-runtime"
 }

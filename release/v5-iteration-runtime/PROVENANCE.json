@@ -1,0 +1,49 @@
+{
+  "schema": "madp.publication-provenance.v2",
+  "milestone": "v5-iteration-runtime",
+  "publication_status": "published-preview",
+  "public_core_version": "5.6.0a1",
+  "public_tag": "preview-2026-09-13-v5-iteration-runtime",
+  "parent_unified_core_commit": "d6def36ab146667e541b3876c4459ed17766614e",
+  "allowlisted_component_digests": {
+    "agent-runner-source": "5a7334c14e5271160fe52c7b3aeb2648380828b1f2f85f98750ef49912dda262",
+    "agent-runner-tests": "9f89488133d6c6d3f3a8f70d78f864c48e63853944734f53c391d2b43f3c13c3",
+    "control-source": "0e38a6e18cd8015d3860f5afce58f68b923b6074ecd852e706139deaa6c0777b",
+    "control-tests": "d4e106c71f93e01ea8ffda8f67bf7fc62ae74cc3ee7822b30840633c45029a8b",
+    "daemon-automation": "0955dcab0cc36fdd1f27a322306406163c77f398f88027c8b28b261cceba7bd5",
+    "daemon-control-plane": "b6df6619881282190e73285003671d1de8c8ac6d86dcbd94eda5258dc5d2316b",
+    "daemon-core": "b87d1433acbc2b566a93775f6942d93b2abeccff6683a11cbcb762b22362873f",
+    "daemon-exchange": "f6d3be523fbb7a973df908f4fdd1f8cd12b3f9329ff2cd78045bd42dae54c747",
+    "daemon-observability": "d11c4533edb2192cda236d1851f00bb6ba303dcde78716d2d95ed44c258ab767",
+    "daemon-registry": "773bd010c92fb522eb8cad58160b5482e3fe60f94226f1a88fbbbae8047ba7ae",
+    "daemon-runtime": "07c799dd20e1c31e9c2b1a1db6f24842851ee1a8176f3439e610d16bd963fcc0",
+    "daemon-storage": "9f5f54823f6fb3a3d4b7ffe7ca7d81d2e891a1e12c6e469692573ad96c6d12ad",
+    "daemon-workflow": "1e3f0a93453fa927a5ecee3cd77e115da363d5c9f9290e72d56d514e70e388d5",
+    "gateway-runtime": "6e49671eea5e752fcaf48aebd43be4d0dd387994a5a3f1c0aa7be5502b73b68e",
+    "protocol-source": "66c187b65c507c4f736d2e158c0ace0add03465554a1e452fefe8d997e3bce54",
+    "protocol-tests": "7c3ce8cf59691219f65d2604d21270e7285d032b29c61387005b706a959b02be"
+  },
+  "qualification": {
+    "requalified_on": "2026-09-13",
+    "state": "passed",
+    "source_tests": 332,
+    "installed_wheel_tests": 332,
+    "package_builds": 5,
+    "cli_help_checks": 2,
+    "synthetic_demo_operators": 3,
+    "model_calls": 0,
+    "hardware_calls": 0,
+    "external_submissions": 0,
+    "environment": "reused-dedicated-MADP-venv; public-only imports; scrubbed configuration",
+    "platform": "Windows; generic policy/RPC fixtures plus controlled actual processes",
+    "known_excluded_issue": "Private legacy Job keeper with Windows venv redirector; not exported or qualified by this milestone."
+  },
+  "scope": "Generic runtime and mandatory trusted domain ports; Windows process qualification; no live model, hardware or external submission.",
+  "wheel_sha256": {
+    "ascendop_agent_runner-5.6.0a1-py3-none-any.whl": "9bf2bf5e3d71c2ddb15b0411b7e71f92a6d02c90e35bcbc89fa0d44bef0fc3d2",
+    "ascendop_control-5.6.0a1-py3-none-any.whl": "edc1762e643c545ea601561b0fab88c37f7d1a09106d7b12a7ddb040b3c92bad",
+    "ascendop_protocol-5.6.0a1-py3-none-any.whl": "91c669885694ee6a88a09bec5826342dd53257717a904943039f7dac0854109c",
+    "ascendop_test_gateway-5.6.0a1-py3-none-any.whl": "9c0373fae71a2ea3ee77973e13fb96b5f3633bc32bf3a1cebf64c3328c311c0a",
+    "ascendop_tester_daemon-5.6.0a1-py3-none-any.whl": "89457faa55e8377b1b7e9c62d2ea5532b4ef51ac3c241d2c3359f15281e18aef"
+  }
+}

@@ -36,6 +36,7 @@ def test_manifest_has_only_core_implementation_trees() -> None:
     )
     sources = {item["source"] for item in manifest["components"]}
     assert sources == {
+        "packages/ascendop_test_gateway/src/ascendop_test_gateway",
         "packages/ascendop_protocol/src",
         "packages/ascendop_protocol/tests",
         "packages/ascendop_control/src",

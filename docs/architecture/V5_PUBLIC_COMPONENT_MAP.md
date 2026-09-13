@@ -1,8 +1,8 @@
 # V5 public component mapping (preparation)
 
 This is a source/extraction record, not an installed-release or deployment ledger.
-This publication contains qualified A only. B also qualified locally (332 source
-and 332 installed-wheel tests), but its source is not included in this release.
+This publication includes B on top of A. Qualification: A 235/235 and B 332/332
+source/installed-wheel tests. It does not deploy the private reference system.
 
 ## A: Unified Core
 
@@ -38,24 +38,23 @@ Do not describe the generic host ports as a turnkey private deployment.
 
 ## B: Iteration Runtime
 
-| Capability | Upstream source candidates | Extraction / qualification required |
+| Capability | Shared export | Qualification / host boundary |
 | --- | --- | --- |
-| Multiplexed provider connection | runtime/app_server_rpc.py; app_server_process.py | Isolate process hosting from model policy. Test timeout with original ID, oversized complete frames and subsequent healthy replies. |
-| Runtime identity and writer quiescence | runtime/process_identity.py; windows_gated_process.py; resident_writer_observation.py | Real child-process tests and explicit Windows support scope; never interpret unknown as exited. |
-| Native admission / receipt binding | automation/resident_terminal.py; native_terminal.py | Replace onboarding lookups with explicit admission/journal ports; keep one original outbox and owner fence. |
-| Local executor boundary | standalone Gateway contracts and service adapters | Publish neutral transport contracts and synthetic executor integration, not private GP/Engine topology. |
-| External evaluation handoff | automation/official_completion.py; official delivery interfaces | Separate local/remote queues, same candidate identity; inject external receipt/policy ports, no browser account export. |
-| Case authoring / regression protection | workspace case intake and standalone case file contract | Separate generic revision/protection rules from operator-specific validators and assets. |
-| Performance comparability | automation/performance_evidence.py | Extract accepted-fact baseline selection and measurement validation from private correctness-artifact loading; test environment/matrix mismatch. |
-| Fair delivery and pause/drain | completion_continuations.py; resident lifecycle | Keep terminal priority and lease renewal on existing outbox; exercise slow side effects and pause without accessing production. |
+| Multiplexed connection | runtime/app_server_rpc.py | Out-of-order replies, pending original IDs, response/frame bounds and recovery; synthetic JSON-RPC peer. |
+| Process hosting | runtime/app_server_process.py; windows_gated_process.py; process_identity.py | Real controlled Windows child processes; no live model or universal OS claim. |
+| Writer observation | runtime/resident_writer_observation.py | Actual owned-Job sampling plus injected helper/orphan/unknown cases. Helper allowlist is explicitly Codex-specific. |
+| Admission and native receipts | automation/native_commit.py; resident_boundary.py | Original owner/claim transaction and native-terminal outbox; trusted host must observe and validate before committing. Session/journal discovery remains host-owned. |
+| Evaluation Gateway | ascendop_test_gateway/runtime.py, ports.py, contracts.py, journal.py, terminal_evidence.py | Same upstream lifecycle with required BundleStorePort; synthetic executor, uncertain publish, cancellation, ACK delay and real crash-cut tests. Concrete GP/Engine deployment is excluded. |
+| External evaluation completion | automation/external_completion_core.py | Exact local candidate binding and transactional continuation; required receipt/policy/planning callbacks. Policy rejection is never PASS; no actual browser submission. |
+| Case revision/protection | automation/case_data_policy.py | Same active/regression partition policy; only trusted task validator/equivalence may qualify changes. No private cases or oracle assets. |
+| Performance comparisons | automation/performance_policy.py | Accepted-fact anchor selection; full raw50/middle20 and matrix/environment/contract checks. Domain retained-artifact loading remains upstream. |
+| Delivery lifecycle | automation/delivery_runtime.py | Original loop with injected handlers/intake/stop state; terminal priority, bounded admission, claim renewal and pause/drain/resume on the existing outbox. |
 
-These rows describe the subsequent local B candidate, which passed 332 source
+These rows describe milestone B, which passed 332 source
 and 332 installed-wheel tests with five packages. It shares native commit, external
 completion, case/performance and delivery policy through required trusted host
-ports. B is not included in this tag and remains local until separately authorized.
+ports. B is included in the Iteration Runtime tag.
 Provider/session discovery and concrete GP/Engine/browser deployment remain private.
 
-The initial upstream runtime/performance precheck passed 35 tests: RPC bounds and
-recovery, controlled real Windows process startup/disposal, writer observation
-classification and performance evidence. This is input evidence for extraction,
-not installed B package qualification.
+See the two-release checklist for platform guarantees, synthetic versus real
+process evidence, and the separate non-exported private keeper/skill audit findings.

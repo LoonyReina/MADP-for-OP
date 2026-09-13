@@ -12,16 +12,16 @@ control plane, and focused tests. GP/Engine architecture and interfaces are
 documented publicly; machine bindings, endpoint implementation, operator assets,
 and official evaluation stay in the private AscendOP deployment.
 
-The current public milestone is **V5 Unified Core** preview (5.5.0a1), tagged
-`preview-2026-09-08-v5-unified-core`.
+The current milestone is **V5 Iteration Runtime** preview (5.6.0a1), tagged
+`preview-2026-09-13-v5-iteration-runtime`.
 It shares completion transactions, recoverable outbox delivery, workspace
 ownership and accepted-fact views with the reference integration. A file-only
 Solver client and short notifications keep detailed interaction in workspace
 files. This is not a claim of complete Flow V5 acceptance or a turnkey deployment.
 
-Unified Core passed 235 source and 235 installed-wheel tests. The subsequent
-Iteration Runtime also qualified locally (332/332), but is not part of this
-release. See the
+This second milestone adds Gateway, resident-process and iteration-policy ports
+on top of Unified Core. Qualification covers 332 source and 332 installed-wheel
+tests across five packages, without live model or hardware calls. See the
 [two-release checklist](docs/architecture/V5_TWO_RELEASE_CHECKLIST.md),
 [component boundary](docs/architecture/V5_PUBLIC_COMPONENT_MAP.md), and
 [synthetic example](docs/architecture/UNIFIED_CORE_DEMO.md). The example exercises
