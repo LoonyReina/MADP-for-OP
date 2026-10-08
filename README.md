@@ -2,7 +2,7 @@
 
 ### Different harnesses. Shared workspaces. Verifiable operator iterations.
 
-[中文](README.zh-CN.md) · [Run the demo](docs/guides/FILE_COLLABORATION_DEMO.md) · [Architecture](docs/architecture/FILE_FIRST_COLLABORATION.md) · [Evidence & limits](docs/showcase/EVIDENCE.md)
+[中文](README.zh-CN.md) · [Run the demo](docs/guides/FILE_COLLABORATION_DEMO.md) · [Architecture](docs/architecture/FILE_FIRST_COLLABORATION.md) · [Evidence & limits](docs/showcase/EVIDENCE.md) · [Interleaved development](docs/showcase/INTERLEAVED_OPERATOR_DEVELOPMENT.md)
 
 MADP is a **file-first collaboration and execution core for operator engineering**.
 It treats a model together with its harness—the tools, session and runtime around
@@ -105,9 +105,18 @@ that every legacy runtime gate has been migrated**.
   end-to-end adapter certification or a controlled benchmark**.
   [Lessons and limits](docs/showcase/EVIDENCE.md).
 
+The showcase now documents a **vertical interleave** between broad case search,
+correctness diagnosis, performance experiments and independent handoff. A small
+Markov model makes the escape-from-local-optimum hypothesis explicit without
+presenting toy probabilities as benchmark data. See [interleaved
+development](docs/showcase/INTERLEAVED_OPERATOR_DEVELOPMENT.md) and the
+[sanitized collaboration record](docs/showcase/COLLABORATION_RECORD_KIMI_DSHARNESS_CODEX.md).
+
 ## Explore and contribute
 
 - [Value and differentiation](docs/showcase/PROJECT_POSITIONING.md)
+- [Cross-agent wiki plan](docs/showcase/CROSS_AGENT_WIKI.md)
+- [Codex for Open Source application draft](docs/showcase/CODEX_FOR_OPEN_SOURCE_APPLICATION.md)
 - [Participant handoff](docs/guides/PARTICIPANT_HANDOFF.md)
 - [Performance strategy](docs/guides/PERFORMANCE_ITERATION.md)
 - [Roadmap](docs/showcase/ROADMAP.md) and [contributing](CONTRIBUTING.md)

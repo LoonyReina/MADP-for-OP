@@ -40,3 +40,10 @@ An operator speedup does not establish that MADP caused it without a study.
 
 The strongest current pitch is an **explicit interoperability boundary with
 executable recovery/evidence mechanics**, informed by engineering use.
+
+The deeper research pattern is **vertical interleave**: correctness, case
+coverage, performance and handoff are allowed to inform one another while the
+workspace keeps their evidence distinct. This is a research-policy claim, not
+a claim that MADP replaces a model's reasoning or that the public toy model is
+a device benchmark. See [the Markov explanation](INTERLEAVED_OPERATOR_DEVELOPMENT.md)
+and the [sanitized collaboration record](COLLABORATION_RECORD_KIMI_DSHARNESS_CODEX.md).

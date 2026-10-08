@@ -1,9 +1,9 @@
 {
   "schema": "madp.publication-provenance.v2",
   "milestone": "file-first-collaboration",
-  "publication_status": "prepared-not-published",
+  "publication_status": "publication-candidate",
   "public_core_version": "5.6.1a1",
-  "public_tag": null,
+  "public_tag": "preview-2026-10-07-interleaved-collaboration",
   "allowlisted_component_digests": {
     "agent-runner-source": "5a7334c14e5271160fe52c7b3aeb2648380828b1f2f85f98750ef49912dda262",
     "agent-runner-tests": "9f89488133d6c6d3f3a8f70d78f864c48e63853944734f53c391d2b43f3c13c3",
@@ -24,9 +24,9 @@
   },
   "qualification": {
     "state": "passed",
-    "qualified_on": "2026-09-13",
-    "source_tests": 339,
-    "installed_wheel_tests": 339,
+    "qualified_on": "2026-10-07",
+    "source_tests": 341,
+    "installed_wheel_tests": 341,
     "package_builds": 5,
     "cli_help_checks": 2,
     "synthetic_managed_demo_tasks": 3,
@@ -34,7 +34,7 @@
     "model_calls": 0,
     "hardware_calls": 0,
     "external_submissions": 0,
-    "environment": "reused-dedicated-MADP-venv; public-only imports; scrubbed configuration",
+    "environment": "fresh-isolated-MADP-venv; public-only imports; scrubbed configuration",
     "platform": "Windows; Python 3.14; controlled process fixtures",
     "scope": "No live provider, device, external evaluator or Windows power-loss claim"
   },

@@ -12,6 +12,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+# The public demo is intentionally executable as ``python -I scripts/...``.
+# In isolated mode Python does not honor PYTHONPATH, so make the checked-out
+# source packages discoverable without requiring an editable install. Installed
+# users still resolve the normal package imports unchanged.
+if __package__ in (None, ""):
+    _repo_root = Path(__file__).resolve().parents[1]
+    for _package in ("ascendop_protocol", "ascendop_control", "ascendop_test_gateway"):
+        sys.path.insert(0, str(_repo_root / "packages" / _package / "src"))
+
 from ascendop_test_gateway.contracts import PreparedBundle, StandaloneTestRequest
 from ascendop_test_gateway.contracts import TransportReceipt, TransportStatus, TestState
 from ascendop_test_gateway.journal import RunJournal

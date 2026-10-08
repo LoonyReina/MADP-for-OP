@@ -15,6 +15,15 @@ harness participants, file-based handoff, a synthetic Gateway demo, selected
 prompt/artifact fixes and an explicit evidence/roadmap package. It is not yet
 published or tagged. [Prepared edition](release/file-first-collaboration/README.md).
 
+## 2026-10-07: Interleaved collaboration showcase prepared
+
+The File-first Collaboration edition now includes a vertical interleave method
+note, a dependency-free Markov illustration, a sanitized Kimi–DSHarness–Codex
+usage record, and a provenance-aware cross-agent wiki plan. The public material
+does not export private endpoints, credentials, operator payloads or raw logs.
+The Codex for Open Source application text is a draft only; no application is
+submitted by this repository update.
+
 ## 2026-06-02: Scheduler V2 source snapshot
 
 The earliest preserved design used a shared task ledger, one logical writer per

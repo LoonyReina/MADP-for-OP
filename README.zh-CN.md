@@ -2,7 +2,7 @@
 
 ### 不同的 harness，共同的工作区，可核验的算子迭代。
 
-[English](README.md) · [运行演示](docs/guides/FILE_COLLABORATION_DEMO.md) · [架构](docs/architecture/FILE_FIRST_COLLABORATION.md) · [证据边界](docs/showcase/EVIDENCE.md)
+[English](README.md) · [运行演示](docs/guides/FILE_COLLABORATION_DEMO.md) · [架构](docs/architecture/FILE_FIRST_COLLABORATION.md) · [证据边界](docs/showcase/EVIDENCE.md) · [纵向交错开发](docs/showcase/INTERLEAVED_OPERATOR_DEVELOPMENT.md)
 
 MADP 是面向算子工程的**文件优先协作与执行核心**。我们把“模型 + 它的 harness
 （工具、会话及运行环境）”视为独立主体，不要求所有参与者成为同一个 agent SDK 的子代理。
@@ -56,7 +56,12 @@ python scripts/demo_file_collaboration.py --root artifacts/file-demo-01
 有三者的开箱即用集成。具体 GP/Engine 部署、硬件执行器、算子代码/case、账号与机器
 配置不公开；部分旧策略接口仍需迁移，不把设计文档当作已实现能力。
 
+新版公开了进一步脱敏的 Kimi–DSHarness–Codex 协作记录，并用一个可运行的
+Markov toy model 解释为什么正确性、性能、诊断和交接需要纵向交错，而不是固化成
+两个互不相见的流水线。模型是方法展示，不是硬件或模型性能宣称。
+
 参阅[项目定位](docs/showcase/PROJECT_POSITIONING.md)、[路线图](docs/showcase/ROADMAP.md)、
-[交接指南](docs/guides/PARTICIPANT_HANDOFF.md)和[证据清单](docs/showcase/EVIDENCE.md)。
+[交接指南](docs/guides/PARTICIPANT_HANDOFF.md)、[协作记录](docs/showcase/COLLABORATION_RECORD_KIMI_DSHARNESS_CODEX.md)、
+[跨 agent wiki 计划](docs/showcase/CROSS_AGENT_WIKI.md)和[证据清单](docs/showcase/EVIDENCE.md)。
 
 Apache-2.0；提及模型和工具不代表获得其提供方背书。

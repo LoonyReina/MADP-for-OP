@@ -27,3 +27,18 @@ this work does not submit one or claim eligibility/endorsement.
 Useful contributions: small executor ports, recovery tests, onboarding and
 cross-platform qualification. Read [CONTRIBUTING](../../CONTRIBUTING.md) for
 current contribution channels and publication boundaries.
+
+## Inter-agent knowledge slice
+
+1. Publish the interleaved-development explanation and its dependency-free
+   Markov toy model as a method illustration.
+2. Stabilize Markdown/JSON `TechniqueCard`, `DiagnosticCard`, `HandoffCard` and
+   `EvidenceCard` exports with provenance and redaction fields.
+3. Add a local index and publication scan for cross-agent cards; keep the wiki
+   downstream of the workspace contract rather than a second scheduler.
+4. Qualify two independent public harness adapters before describing them as
+   supported integrations.
+
+The [cross-agent wiki plan](CROSS_AGENT_WIKI.md) and [Codex for Open Source
+application draft](CODEX_FOR_OPEN_SOURCE_APPLICATION.md) describe the intended
+public-facing next step.

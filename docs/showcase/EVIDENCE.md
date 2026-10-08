@@ -29,6 +29,15 @@ intervention; it was not a controlled model comparison or fully unattended run.
 | Local speedup misses external gains | Comparable baselines and deliberate proxy-case revision | Strategy, not a hidden-case reconstruction tool |
 | Paths/ACK block consumption | Verify consumed files; separate acceptance from ACK | Gateway fix and tests |
 
+## Sanitized usage record
+
+The public preview now includes a dated, redacted record of a six-operator
+campaign using Codex/Main, Kimi and DSHarness. It reports correctness-point
+outcomes and research decisions, not scores, rankings, accounts or private
+machine details. The record is useful as a collaboration example, but it is
+not a controlled comparison of models and not a claim that the public preview
+contains those private adapters. [Read the record](COLLABORATION_RECORD_KIMI_DSHARNESS_CODEX.md).
+
 No private source, accounts, machines, credentials, request IDs, raw logs or
 contest payloads are published. Private optimization results are not public
 reproducible benchmarks, so no numerical speedup/ranking claim is made here.
