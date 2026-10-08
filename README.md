@@ -13,8 +13,8 @@ while sharing source, experiment notes, test requests and durable results.
 agent SDK.** MADP does not supply intelligence or replace coding agents. It
 provides the coordination and evidence boundary around their work.
 
-> Latest published: [V5 Iteration Runtime, 5.6.0a1](https://github.com/LoonyReina/MADP-for-OP/tree/preview-2026-09-13-v5-iteration-runtime).
-> This branch prepares **File-first Collaboration, 5.6.1a1**; it is not yet published.
+> Latest published: [File-first Collaboration, 5.6.1a1](https://github.com/LoonyReina/MADP-for-OP/tree/preview-2026-10-07-interleaved-collaboration).
+> Parent release: [V5 Iteration Runtime, 5.6.0a1](https://github.com/LoonyReina/MADP-for-OP/tree/preview-2026-09-13-v5-iteration-runtime).
 > This is a public core preview, not the complete private AscendOP deployment.
 
 ## Why this exists

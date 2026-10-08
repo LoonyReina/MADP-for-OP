@@ -1,7 +1,7 @@
 # File-first Collaboration — prepared edition
 
-Version: 5.6.1a1. Status: publication candidate; the package and showcase are
-qualified locally before tagging.
+Version: 5.6.1a1. Status: published under
+`preview-2026-10-07-interleaved-collaboration`.
 Parent published release: V5 Iteration Runtime (5.6.0a1), commit
 `c04f60bcbdd0dab754bb0070ab5ca67d52c2d884`.
 
@@ -33,6 +33,6 @@ scrubbed configuration and public-only imports. No private service was deployed
 or contacted. No live model, hardware or external-evaluator qualification is
 claimed. Component and wheel digests: [PROVENANCE.json](PROVENANCE.json).
 
-The publication tag for this candidate is assigned only after the isolated
-qualification and publication scan pass. No live provider, hardware or
-external evaluator is contacted by qualification.
+The publication tag was assigned after the isolated qualification and
+publication scan passed. No live provider, hardware or external evaluator was
+contacted by qualification.

@@ -1,7 +1,7 @@
 {
   "schema": "madp.publication-provenance.v2",
   "milestone": "file-first-collaboration",
-  "publication_status": "publication-candidate",
+  "publication_status": "published",
   "public_core_version": "5.6.1a1",
   "public_tag": "preview-2026-10-07-interleaved-collaboration",
   "allowlisted_component_digests": {

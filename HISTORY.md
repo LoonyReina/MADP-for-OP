@@ -15,7 +15,7 @@ harness participants, file-based handoff, a synthetic Gateway demo, selected
 prompt/artifact fixes and an explicit evidence/roadmap package. It is not yet
 published or tagged. [Prepared edition](release/file-first-collaboration/README.md).
 
-## 2026-10-07: Interleaved collaboration showcase prepared
+## 2026-10-07: Interleaved collaboration showcase published
 
 The File-first Collaboration edition now includes a vertical interleave method
 note, a dependency-free Markov illustration, a sanitized Kimi–DSHarness–Codex

@@ -11,8 +11,8 @@ MADP 是面向算子工程的**文件优先协作与执行核心**。我们把�
 case、实验记录、测试请求和原始结果交接工作。MADP 不替代 agent，不提供新推理模型；
 它负责围绕研究工作的执行与证据边界。
 
-最新已发布：[V5 Iteration Runtime / 5.6.0a1](https://github.com/LoonyReina/MADP-for-OP/tree/preview-2026-09-13-v5-iteration-runtime)。
-当前分支准备 File-first Collaboration / 5.6.1a1，**尚未发布**。
+最新已发布：[File-first Collaboration / 5.6.1a1](https://github.com/LoonyReina/MADP-for-OP/tree/preview-2026-10-07-interleaved-collaboration)。
+其上一个版本是 [V5 Iteration Runtime / 5.6.0a1](https://github.com/LoonyReina/MADP-for-OP/tree/preview-2026-09-13-v5-iteration-runtime)。
 公开仓库是核心预览，不是完整私有 AscendOP 部署。
 
 ## 为什么值得做

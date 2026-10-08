@@ -1,7 +1,7 @@
 {
   "schema": "madp.current-publication.v1",
   "milestone": "file-first-collaboration",
-  "publication_status": "publication-candidate",
+  "publication_status": "published",
   "provenance_path": "release/file-first-collaboration/PROVENANCE.json",
   "public_tag": "preview-2026-10-07-interleaved-collaboration"
 }
