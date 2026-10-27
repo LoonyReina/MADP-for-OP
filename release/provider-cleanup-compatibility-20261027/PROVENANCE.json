@@ -1,7 +1,7 @@
 {
   "schema": "madp.publication-provenance.v2",
   "milestone": "provider-cleanup-compatibility-20261027",
-  "publication_status": "candidate",
+  "publication_status": "qualified",
   "public_core_version": "5.6.1a3",
   "public_tag": null,
   "allowlisted_component_digests": {
@@ -23,7 +23,42 @@
     "protocol-tests": "7c3ce8cf59691219f65d2604d21270e7285d032b29c61387005b706a959b02be"
   },
   "qualification": {
-    "state": "pending"
+    "state": "passed",
+    "qualified_on": "2026-10-27",
+    "tested_source_commit": "a1baedef20f7bbd2db00fb2894bc01c26f5cd8b8",
+    "platforms": {
+      "linux": {
+        "python": "3.11.16",
+        "source_passed": 363,
+        "wheel_passed": 363,
+        "skipped_each": 3,
+        "skip_reason": "Windows-only resident process primitives"
+      },
+      "windows": {
+        "python": "3.14",
+        "source_passed": 366,
+        "wheel_passed": 366,
+        "skipped_each": 0
+      }
+    },
+    "package_builds_each": 5,
+    "scope": "Isolated synthetic tests, CLI and demos; no production, model or hardware calls. Python 3.10 not directly qualified."
   },
-  "parent_release_commit": "7dcb7f7ed2f02020b9673fbf634634ac33664da4"
+  "parent_release_commit": "7dcb7f7ed2f02020b9673fbf634634ac33664da4",
+  "wheel_sha256_by_platform": {
+    "linux": {
+      "ascendop_agent_runner-5.6.1a3-py3-none-any.whl": "53bafbf048dcf5bcd2008e6289f0a7ec65cc95c3759dc13901c44ef85bf0ed71",
+      "ascendop_control-5.6.1a3-py3-none-any.whl": "e8f23b70eb6f2f2fb10a400e72882d1add432d5456234eb92d3a9e0cbfb52374",
+      "ascendop_protocol-5.6.1a3-py3-none-any.whl": "4df1d707ecda6d74c070f3b61f98c5736a063f5030fb97958b8a0f2a81665064",
+      "ascendop_test_gateway-5.6.1a3-py3-none-any.whl": "25ad8afdc1ff9e33eab989845a27649f16eac799dc420b45b2d72c6056568c31",
+      "ascendop_tester_daemon-5.6.1a3-py3-none-any.whl": "4ec386341c148d7da4108576efa57c449728e201283c97d098211a2df75c1b48"
+    },
+    "windows": {
+      "ascendop_agent_runner-5.6.1a3-py3-none-any.whl": "eace6a80e72cf39bf7f45e9aaafdf19df2810f165c89613a9b6480bd4af6b39d",
+      "ascendop_control-5.6.1a3-py3-none-any.whl": "289eb0d7f2d12b938486408518f9ec533881670d4e156d0580738131a901f791",
+      "ascendop_protocol-5.6.1a3-py3-none-any.whl": "ea215c2c9aeeff7b3c6b8541a31a46860f86c3a92c80e93c111025e4635273cb",
+      "ascendop_test_gateway-5.6.1a3-py3-none-any.whl": "41c9ee28b83bdd144ae562668899f9d7de27a313a74414592d6cd6bcbd82eff9",
+      "ascendop_tester_daemon-5.6.1a3-py3-none-any.whl": "fea24c59bee2b9ceb3b852d696f7cb40e4f51575f33aea8309bdcc5e0f106d9a"
+    }
+  }
 }
