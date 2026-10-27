@@ -54,3 +54,31 @@ The public daemon package exposes this boundary through
 `ascendop_daemon.exchange.transport_contracts` and the wire/protocol packages.
 Concrete SSH, repository relay, endpoint commands, credentials, and topology are
 deployment concerns and are intentionally absent.
+
+## Local Gateway operation exclusion
+
+`GatewayRuntime.submit`, `status`, `cancel` and `resume_prepublication` serialize
+per run directory using the permanent `.gateway-operation.lock` kernel lock.
+This is separate from `.journal.lock`: transport calls hold the operation lock,
+while individual journal writes still hold their short storage lock. Different
+requests remain independent. The independent terminal ACK worker keeps its own
+lock and consumption/retention boundary.
+
+A contender waits at most five seconds to acquire the operation lock and raises
+`TimeoutError` without transport side effects if it remains busy. This bounds
+lock acquisition, not transport execution: deployment adapters must implement
+bounded I/O. Cancellation may therefore wait for the active transport call;
+a timeout does not prove cancellation was durably requested. Read-only journal
+inspection remains available, but lifecycle mutation must use GatewayRuntime.
+Transport adapters must not re-enter lifecycle methods for the same request.
+
+Process exit releases the kernel lock; the rendezvous file is never removed.
+A new process reconciles durable PUBLISHING/UNCERTAIN state rather than assuming
+that publication did not happen. A durable cancellation on PREPARED converges
+locally without publication. On PUBLISHING/UNCERTAIN it reconciles/cancels and
+suppresses publication retry, even when `retry_uncertain=True`.
+
+All writers sharing a run directory must use this protocol; drain older runtimes
+before upgrading. This is local filesystem exclusion, not a distributed lease
+or a claim of exactly-once external execution. Transport/endpoint identity and
+deduplication remain required, including explicit uncertain-publication retries.
