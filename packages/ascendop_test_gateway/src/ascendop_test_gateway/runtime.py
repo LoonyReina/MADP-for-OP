@@ -38,7 +38,8 @@ class GatewayRuntime:
     def resume_prepublication(self, bundle: PreparedBundle) -> dict[str, Any]:
         """Resume a sealed request only when no publication or receipt existed."""
 
-        return RunJournal(bundle.run_dir).resume_prepublication_failure()
+        with exclusive_file_lock(bundle.run_dir / ".gateway-operation.lock"):
+            return RunJournal(bundle.run_dir).resume_prepublication_failure()
 
     def submit(
         self,
@@ -46,11 +47,24 @@ class GatewayRuntime:
         *,
         retry_uncertain: bool = False,
     ) -> dict[str, Any]:
+        # Separate from the short journal write lock: retain exclusion through
+        # transport calls so another process cannot reconcile an active publisher.
+        with exclusive_file_lock(bundle.run_dir / ".gateway-operation.lock"):
+            return self._submit_locked(bundle, retry_uncertain=retry_uncertain)
+
+    def _submit_locked(
+        self, bundle: PreparedBundle, *, retry_uncertain: bool,
+    ) -> dict[str, Any]:
         journal = RunJournal(bundle.run_dir)
-        state = TestState(str(journal.read()["state"]))
+        data = journal.read()
+        state = TestState(str(data["state"]))
         receipt = journal.receipt()
         if receipt is not None:
-            return self.status(bundle.request_id)
+            return self._status_locked(bundle.request_id)
+        if isinstance(data.get("cancellation"), dict):
+            # PREPARED is provably unpublished. PUBLISHING/UNCERTAIN must
+            # reconcile and cancel, never retry publication even if requested.
+            return self._cancel_locked(bundle.request_id)
         try:
             self.transport.preflight(bundle)
         except TransportRequestError as exc:
@@ -72,6 +86,8 @@ class GatewayRuntime:
                 reconcile_rejection(bundle) if callable(reconcile_rejection) else None
             )
             if rejection is not None:
+                if rejection.request_id != bundle.request_id:
+                    raise ValueError("transport rejection request identity mismatch")
                 return journal.transition(
                     TestState.FAILED,
                     reason=rejection.classification or "endpoint-admission-rejected",
@@ -81,7 +97,7 @@ class GatewayRuntime:
             if receipt is not None:
                 journal.attach_receipt(receipt)
                 journal.transition(TestState.ACCEPTED, reason="transport-reconciled")
-                return self.status(bundle.request_id)
+                return self._status_locked(bundle.request_id)
             if state == TestState.PUBLISHING:
                 journal.transition(
                     TestState.UNCERTAIN,
@@ -138,9 +154,14 @@ class GatewayRuntime:
             raise ValueError("transport receipt request identity mismatch")
         journal.attach_receipt(receipt)
         journal.transition(TestState.ACCEPTED, reason="transport-accepted")
-        return self.status(bundle.request_id)
+        return self._status_locked(bundle.request_id)
 
     def status(self, request_id: str) -> dict[str, Any]:
+        bundle = self.bundle(request_id)
+        with exclusive_file_lock(bundle.run_dir / ".gateway-operation.lock"):
+            return self._status_locked(request_id)
+
+    def _status_locked(self, request_id: str) -> dict[str, Any]:
         bundle = self.bundle(request_id)
         journal = RunJournal(bundle.run_dir)
         data = journal.read()
@@ -330,14 +351,20 @@ class GatewayRuntime:
 
     def cancel(self, request_id: str) -> dict[str, Any]:
         bundle = self.bundle(request_id)
+        with exclusive_file_lock(bundle.run_dir / ".gateway-operation.lock"):
+            return self._cancel_locked(request_id)
+
+    def _cancel_locked(self, request_id: str) -> dict[str, Any]:
+        bundle = self.bundle(request_id)
         journal = RunJournal(bundle.run_dir)
         data = journal.read()
         state = TestState(str(data["state"]))
         if state in TERMINAL_STATES:
             return data
-        data = journal.request_cancellation(
-            reason="standalone gateway cancellation requested"
-        )
+        if not isinstance(data.get("cancellation"), dict):
+            journal.request_cancellation(
+                reason="standalone gateway cancellation requested"
+            )
         receipt = journal.receipt()
         if receipt is None and state == TestState.PREPARED:
             return journal.transition(

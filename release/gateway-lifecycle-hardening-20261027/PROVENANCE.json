@@ -1,0 +1,50 @@
+{
+  "schema": "madp.publication-provenance.v2",
+  "milestone": "gateway-lifecycle-hardening-20261027",
+  "publication_status": "qualified",
+  "public_core_version": "5.6.1a2",
+  "public_tag": null,
+  "allowlisted_component_digests": {
+    "agent-runner-source": "5a7334c14e5271160fe52c7b3aeb2648380828b1f2f85f98750ef49912dda262",
+    "agent-runner-tests": "9f89488133d6c6d3f3a8f70d78f864c48e63853944734f53c391d2b43f3c13c3",
+    "control-source": "0e38a6e18cd8015d3860f5afce58f68b923b6074ecd852e706139deaa6c0777b",
+    "control-tests": "d4e106c71f93e01ea8ffda8f67bf7fc62ae74cc3ee7822b30840633c45029a8b",
+    "daemon-automation": "0955dcab0cc36fdd1f27a322306406163c77f398f88027c8b28b261cceba7bd5",
+    "daemon-control-plane": "b6df6619881282190e73285003671d1de8c8ac6d86dcbd94eda5258dc5d2316b",
+    "daemon-core": "b87d1433acbc2b566a93775f6942d93b2abeccff6683a11cbcb762b22362873f",
+    "daemon-exchange": "f6d3be523fbb7a973df908f4fdd1f8cd12b3f9329ff2cd78045bd42dae54c747",
+    "daemon-observability": "d11c4533edb2192cda236d1851f00bb6ba303dcde78716d2d95ed44c258ab767",
+    "daemon-registry": "773bd010c92fb522eb8cad58160b5482e3fe60f94226f1a88fbbbae8047ba7ae",
+    "daemon-runtime": "07c799dd20e1c31e9c2b1a1db6f24842851ee1a8176f3439e610d16bd963fcc0",
+    "daemon-storage": "9f5f54823f6fb3a3d4b7ffe7ca7d81d2e891a1e12c6e469692573ad96c6d12ad",
+    "daemon-workflow": "8c09278b3e28fb830bb891103688b1c1920040c0ca2b8d2b8f4172db4efe3d30",
+    "gateway-runtime": "0dda830813d7cc83b7636cb7a79195935e46857c46f1e51c6b072e44bf209489",
+    "protocol-source": "485368e401afce5a99e36ba26cd9e54b268bacc03f8ca6999b91759f5d5b374a",
+    "protocol-tests": "7c3ce8cf59691219f65d2604d21270e7285d032b29c61387005b706a959b02be"
+  },
+  "qualification": {
+    "state": "passed",
+    "qualified_on": "2026-10-27",
+    "source_tests": 364,
+    "installed_wheel_tests": 364,
+    "package_builds": 5,
+    "cli_help_checks": 2,
+    "private_gateway_tests": 161,
+    "private_gateway_skipped": 1,
+    "private_daemon_integration_tests": 59,
+    "model_calls": 0,
+    "hardware_calls": 0,
+    "external_submissions": 0,
+    "platform": "Windows; Python 3.14; pytest 8.4.2 for public qualification",
+    "environment": "Dedicated no-system-site-packages venv; clean wheel installation; public-only imports; scrubbed configuration",
+    "scope": "Synthetic local lifecycle and packaging validation. Linux execution, live endpoints, and power-loss behavior not validated."
+  },
+  "parent_release_commit": "20729a5585df8d74eadcf429280dc70b64ed0e27",
+  "wheel_sha256": {
+    "ascendop_agent_runner-5.6.1a2-py3-none-any.whl": "7af259c93704400f81c0011cdf831110ac39dd1feca620323bea3be9db46a074",
+    "ascendop_control-5.6.1a2-py3-none-any.whl": "d0f5b6774efe386b2eb789129fdb23e8d373bc495e24a8828a3427a57629b726",
+    "ascendop_protocol-5.6.1a2-py3-none-any.whl": "d74582fe9e359d89f2d71b88b96b78018c39ee3ec17c5a13fc766d1c409bd879",
+    "ascendop_test_gateway-5.6.1a2-py3-none-any.whl": "03fcdf8286e6b8a000f2a1916c472f1c7d099a0a5b0dfb58b303d61a841c6651",
+    "ascendop_tester_daemon-5.6.1a2-py3-none-any.whl": "d744e8fe1f475477aeca828c8713c23270b1307bad5ac7ff21f39a52ceb0c101"
+  }
+}
