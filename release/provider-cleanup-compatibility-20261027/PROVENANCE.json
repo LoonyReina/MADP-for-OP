@@ -1,0 +1,64 @@
+{
+  "schema": "madp.publication-provenance.v2",
+  "milestone": "provider-cleanup-compatibility-20261027",
+  "publication_status": "qualified",
+  "public_core_version": "5.6.1a3",
+  "public_tag": null,
+  "allowlisted_component_digests": {
+    "agent-runner-source": "75e74d5d7e36e66a66d072ab6abf59f54cf0d71678b101938ab2b24ea88b0c30",
+    "agent-runner-tests": "d1595a1f6b5109a79c486b8ec52f810802a8e6a844a5e00238c71daa6ed22756",
+    "control-source": "0e38a6e18cd8015d3860f5afce58f68b923b6074ecd852e706139deaa6c0777b",
+    "control-tests": "d4e106c71f93e01ea8ffda8f67bf7fc62ae74cc3ee7822b30840633c45029a8b",
+    "daemon-automation": "0955dcab0cc36fdd1f27a322306406163c77f398f88027c8b28b261cceba7bd5",
+    "daemon-control-plane": "b6df6619881282190e73285003671d1de8c8ac6d86dcbd94eda5258dc5d2316b",
+    "daemon-core": "b87d1433acbc2b566a93775f6942d93b2abeccff6683a11cbcb762b22362873f",
+    "daemon-exchange": "f6d3be523fbb7a973df908f4fdd1f8cd12b3f9329ff2cd78045bd42dae54c747",
+    "daemon-observability": "d11c4533edb2192cda236d1851f00bb6ba303dcde78716d2d95ed44c258ab767",
+    "daemon-registry": "773bd010c92fb522eb8cad58160b5482e3fe60f94226f1a88fbbbae8047ba7ae",
+    "daemon-runtime": "07c799dd20e1c31e9c2b1a1db6f24842851ee1a8176f3439e610d16bd963fcc0",
+    "daemon-storage": "9f5f54823f6fb3a3d4b7ffe7ca7d81d2e891a1e12c6e469692573ad96c6d12ad",
+    "daemon-workflow": "8c09278b3e28fb830bb891103688b1c1920040c0ca2b8d2b8f4172db4efe3d30",
+    "gateway-runtime": "0dda830813d7cc83b7636cb7a79195935e46857c46f1e51c6b072e44bf209489",
+    "protocol-source": "6643a6c958ade1a497a3898bfe38dabf2b4df14af0444296d49403ee30e249d7",
+    "protocol-tests": "7c3ce8cf59691219f65d2604d21270e7285d032b29c61387005b706a959b02be"
+  },
+  "qualification": {
+    "state": "passed",
+    "qualified_on": "2026-10-27",
+    "tested_source_commit": "a1baedef20f7bbd2db00fb2894bc01c26f5cd8b8",
+    "platforms": {
+      "linux": {
+        "python": "3.11.16",
+        "source_passed": 363,
+        "wheel_passed": 363,
+        "skipped_each": 3,
+        "skip_reason": "Windows-only resident process primitives"
+      },
+      "windows": {
+        "python": "3.14",
+        "source_passed": 366,
+        "wheel_passed": 366,
+        "skipped_each": 0
+      }
+    },
+    "package_builds_each": 5,
+    "scope": "Isolated synthetic tests, CLI and demos; no production, model or hardware calls. Python 3.10 not directly qualified."
+  },
+  "parent_release_commit": "7dcb7f7ed2f02020b9673fbf634634ac33664da4",
+  "wheel_sha256_by_platform": {
+    "linux": {
+      "ascendop_agent_runner-5.6.1a3-py3-none-any.whl": "53bafbf048dcf5bcd2008e6289f0a7ec65cc95c3759dc13901c44ef85bf0ed71",
+      "ascendop_control-5.6.1a3-py3-none-any.whl": "e8f23b70eb6f2f2fb10a400e72882d1add432d5456234eb92d3a9e0cbfb52374",
+      "ascendop_protocol-5.6.1a3-py3-none-any.whl": "4df1d707ecda6d74c070f3b61f98c5736a063f5030fb97958b8a0f2a81665064",
+      "ascendop_test_gateway-5.6.1a3-py3-none-any.whl": "25ad8afdc1ff9e33eab989845a27649f16eac799dc420b45b2d72c6056568c31",
+      "ascendop_tester_daemon-5.6.1a3-py3-none-any.whl": "4ec386341c148d7da4108576efa57c449728e201283c97d098211a2df75c1b48"
+    },
+    "windows": {
+      "ascendop_agent_runner-5.6.1a3-py3-none-any.whl": "eace6a80e72cf39bf7f45e9aaafdf19df2810f165c89613a9b6480bd4af6b39d",
+      "ascendop_control-5.6.1a3-py3-none-any.whl": "289eb0d7f2d12b938486408518f9ec533881670d4e156d0580738131a901f791",
+      "ascendop_protocol-5.6.1a3-py3-none-any.whl": "ea215c2c9aeeff7b3c6b8541a31a46860f86c3a92c80e93c111025e4635273cb",
+      "ascendop_test_gateway-5.6.1a3-py3-none-any.whl": "41c9ee28b83bdd144ae562668899f9d7de27a313a74414592d6cd6bcbd82eff9",
+      "ascendop_tester_daemon-5.6.1a3-py3-none-any.whl": "fea24c59bee2b9ceb3b852d696f7cb40e4f51575f33aea8309bdcc5e0f106d9a"
+    }
+  }
+}

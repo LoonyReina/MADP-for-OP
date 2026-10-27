@@ -1,7 +1,7 @@
 {
   "schema": "madp.current-publication.v1",
-  "milestone": "gateway-lifecycle-hardening-20261027",
+  "milestone": "provider-cleanup-compatibility-20261027",
   "publication_status": "qualified",
-  "provenance_path": "release/gateway-lifecycle-hardening-20261027/PROVENANCE.json",
+  "provenance_path": "release/provider-cleanup-compatibility-20261027/PROVENANCE.json",
   "public_tag": null
 }

@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -464,7 +465,16 @@ def _remove_private_tree(path: Path) -> None:
     last_error: OSError | None = None
     for _attempt in range(5):
         try:
-            shutil.rmtree(target, onexc=_force_remove)
+            if sys.version_info >= (3, 12):
+                shutil.rmtree(target, onexc=_force_remove)
+            else:
+                # Python 3.10/3.11 pass an exc_info tuple to onerror.
+                shutil.rmtree(
+                    target,
+                    onerror=lambda function, name, info: _force_remove(
+                        function, name, info[1]
+                    ),
+                )
             return
         except OSError as exc:
             last_error = exc

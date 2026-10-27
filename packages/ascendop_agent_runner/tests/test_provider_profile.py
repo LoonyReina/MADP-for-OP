@@ -15,6 +15,31 @@ from ascendop_agent_runner.provider import (
 DRIVERS = ["codex-cli", "claude-code-cli", "kimi-code-cli"]
 
 
+@pytest.mark.parametrize("version", [(3, 11), (3, 12)])
+def test_cleanup_selects_compatible_error_callback(tmp_path, monkeypatch, version):
+    from types import SimpleNamespace
+    from ascendop_agent_runner import provider
+
+    observed = []
+    failure = PermissionError("test-only")
+    monkeypatch.setattr(provider, "sys", SimpleNamespace(version_info=version))
+    monkeypatch.setattr(provider, "_force_remove",
+                        lambda function, name, error: observed.append((name, error)))
+
+    def remove(path, **kwargs):
+        if version >= (3, 12):
+            assert set(kwargs) == {"onexc"}
+            kwargs["onexc"](None, str(path), failure)
+        else:
+            assert set(kwargs) == {"onerror"}
+            kwargs["onerror"](None, str(path), (PermissionError, failure, None))
+
+    monkeypatch.setattr(provider.shutil, "rmtree", remove)
+    provider._remove_private_tree(tmp_path)
+    assert len(observed) == 1
+    assert observed[0][1] is failure
+
+
 def test_profile_loads_shell_export_without_exposing_secret(tmp_path: Path) -> None:
     secret = "sk-test-provider-secret"
     config = _profile_config(tmp_path, secret=secret)
