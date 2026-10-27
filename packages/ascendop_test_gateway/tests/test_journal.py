@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import stat
 from pathlib import Path
 
 from ascendop_test_gateway import journal as journal_module
@@ -36,16 +37,27 @@ def test_journal_retries_transient_windows_replace_and_retains_lock_inode(
 def test_journal_syncs_before_replacing(tmp_path: Path, monkeypatch) -> None:
     events = []
     real_sync, real_replace = os.fsync, os.replace
+    real_directory_sync = journal_module.sync_directory
 
     def sync(descriptor):
-        events.append("fsync")
+        kind = "directory-fsync" if stat.S_ISDIR(os.fstat(descriptor).st_mode) else "file-fsync"
+        events.append(kind)
         real_sync(descriptor)
 
     def replace(source, destination):
         events.append("replace")
         real_replace(source, destination)
 
+    def directory_sync(path):
+        assert Path(path) == tmp_path
+        events.append("sync-directory")
+        real_directory_sync(path)
+
+    monkeypatch.setattr(journal_module, "sync_directory", directory_sync)
     monkeypatch.setattr(journal_module.os, "fsync", sync)
     monkeypatch.setattr(journal_module.os, "replace", replace)
     RunJournal(tmp_path).initialize("request-1")
-    assert events == ["fsync", "replace"]
+    expected = ["file-fsync", "replace", "sync-directory"]
+    if os.name == "posix":
+        expected.append("directory-fsync")
+    assert events == expected
