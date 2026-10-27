@@ -91,6 +91,8 @@ class RunJournal:
     def attach_receipt(self, receipt: TransportReceipt) -> dict[str, Any]:
         with self._lock():
             data = self._read_unlocked()
+            if receipt.request_id != data["request_id"]:
+                raise ValueError("transport receipt request identity mismatch")
             existing = data.get("transport_receipt")
             encoded = receipt.to_dict()
             if existing is not None and existing != encoded:
