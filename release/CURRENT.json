@@ -1,7 +1,7 @@
 {
   "schema": "madp.current-publication.v1",
-  "milestone": "file-first-collaboration",
-  "publication_status": "published",
-  "provenance_path": "release/file-first-collaboration/PROVENANCE.json",
-  "public_tag": "preview-2026-10-07-interleaved-collaboration"
+  "milestone": "gateway-lifecycle-hardening-20261027",
+  "publication_status": "qualified",
+  "provenance_path": "release/gateway-lifecycle-hardening-20261027/PROVENANCE.json",
+  "public_tag": null
 }

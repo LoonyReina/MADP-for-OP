@@ -201,3 +201,39 @@ def test_lock_timeout_causes_no_publication(tmp_path, monkeypatch):
             gateway.submit(bundle)
     assert transport.submit_count == 0
     assert RunJournal(bundle.run_dir).read()["state"] == "prepared"
+
+
+def test_cancel_timeout_does_not_record_intent_and_can_be_retried(tmp_path, monkeypatch):
+    entered, release = Event(), Event()
+
+    class BlockingTransport(MemoryTransport):
+        def submit(self, bundle):
+            entered.set()
+            assert release.wait(10)
+            return super().submit(bundle)
+
+    transport = BlockingTransport()
+    gateway, bundle = prepare(tmp_path, transport)
+    actual_lock = runtime_module.exclusive_file_lock
+
+    @contextmanager
+    def immediate_lock(path):
+        with actual_lock(path, timeout_seconds=0):
+            yield
+
+    monkeypatch.setattr(runtime_module, "exclusive_file_lock", immediate_lock)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        publishing = pool.submit(gateway.submit, bundle)
+        try:
+            assert entered.wait(5)
+            journal = RunJournal(bundle.run_dir)
+            before = journal.path.read_bytes()
+            with pytest.raises(TimeoutError):
+                gateway.cancel(bundle.request_id)
+            assert journal.path.read_bytes() == before
+            assert journal.read().get("cancellation") is None
+        finally:
+            release.set()
+        assert publishing.result(timeout=5)["state"] == "accepted"
+    assert gateway.cancel(bundle.request_id)["state"] == "cancelled"
+    assert transport.submit_count == 1

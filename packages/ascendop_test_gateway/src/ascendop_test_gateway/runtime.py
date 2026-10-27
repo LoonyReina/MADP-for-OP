@@ -86,6 +86,8 @@ class GatewayRuntime:
                 reconcile_rejection(bundle) if callable(reconcile_rejection) else None
             )
             if rejection is not None:
+                if rejection.request_id != bundle.request_id:
+                    raise ValueError("transport rejection request identity mismatch")
                 return journal.transition(
                     TestState.FAILED,
                     reason=rejection.classification or "endpoint-admission-rejected",
