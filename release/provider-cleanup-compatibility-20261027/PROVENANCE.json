@@ -1,0 +1,29 @@
+{
+  "schema": "madp.publication-provenance.v2",
+  "milestone": "provider-cleanup-compatibility-20261027",
+  "publication_status": "candidate",
+  "public_core_version": "5.6.1a3",
+  "public_tag": null,
+  "allowlisted_component_digests": {
+    "agent-runner-source": "75e74d5d7e36e66a66d072ab6abf59f54cf0d71678b101938ab2b24ea88b0c30",
+    "agent-runner-tests": "d1595a1f6b5109a79c486b8ec52f810802a8e6a844a5e00238c71daa6ed22756",
+    "control-source": "0e38a6e18cd8015d3860f5afce58f68b923b6074ecd852e706139deaa6c0777b",
+    "control-tests": "d4e106c71f93e01ea8ffda8f67bf7fc62ae74cc3ee7822b30840633c45029a8b",
+    "daemon-automation": "0955dcab0cc36fdd1f27a322306406163c77f398f88027c8b28b261cceba7bd5",
+    "daemon-control-plane": "b6df6619881282190e73285003671d1de8c8ac6d86dcbd94eda5258dc5d2316b",
+    "daemon-core": "b87d1433acbc2b566a93775f6942d93b2abeccff6683a11cbcb762b22362873f",
+    "daemon-exchange": "f6d3be523fbb7a973df908f4fdd1f8cd12b3f9329ff2cd78045bd42dae54c747",
+    "daemon-observability": "d11c4533edb2192cda236d1851f00bb6ba303dcde78716d2d95ed44c258ab767",
+    "daemon-registry": "773bd010c92fb522eb8cad58160b5482e3fe60f94226f1a88fbbbae8047ba7ae",
+    "daemon-runtime": "07c799dd20e1c31e9c2b1a1db6f24842851ee1a8176f3439e610d16bd963fcc0",
+    "daemon-storage": "9f5f54823f6fb3a3d4b7ffe7ca7d81d2e891a1e12c6e469692573ad96c6d12ad",
+    "daemon-workflow": "8c09278b3e28fb830bb891103688b1c1920040c0ca2b8d2b8f4172db4efe3d30",
+    "gateway-runtime": "0dda830813d7cc83b7636cb7a79195935e46857c46f1e51c6b072e44bf209489",
+    "protocol-source": "6643a6c958ade1a497a3898bfe38dabf2b4df14af0444296d49403ee30e249d7",
+    "protocol-tests": "7c3ce8cf59691219f65d2604d21270e7285d032b29c61387005b706a959b02be"
+  },
+  "qualification": {
+    "state": "pending"
+  },
+  "parent_release_commit": "7dcb7f7ed2f02020b9673fbf634634ac33664da4"
+}
